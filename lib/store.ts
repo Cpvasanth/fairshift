@@ -14,13 +14,22 @@ export type Hazard = {
   needsReview: boolean;
   status: Status;
   createdAt: number;
+  ackAt?: number;
+  fixedAt?: number;
 };
 
-const seedHazards = (): Hazard[] => [
-  { id: "seed-1", packId: "construction", category: "electrical", severity: "HIGH", summaryEn: "Exposed wiring near the Block A lift shaft.", transcript: "", language: "ta", needsReview: false, status: "FIXED", createdAt: Date.now() - 86_400_000 },
-  { id: "seed-2", packId: "construction", category: "no PPE", severity: "MEDIUM", summaryEn: "Helmets short for the evening crew.", transcript: "", language: "ta", needsReview: false, status: "ACKNOWLEDGED", createdAt: Date.now() - 7_200_000 },
-  { id: "seed-3", packId: "college", category: "slippery floor", severity: "MEDIUM", summaryEn: "Wet floor outside the chemistry lab, no sign.", transcript: "", language: "ta", needsReview: false, status: "OPEN", createdAt: Date.now() - 3_600_000 },
-];
+const H = 3_600_000;
+const seedHazards = (): Hazard[] => {
+  const t = Date.now();
+  const base = { transcript: "", language: "ta", needsReview: false };
+  return [
+    { ...base, id: "seed-1", packId: "construction", category: "electrical", severity: "HIGH", summaryEn: "Exposed wiring near the Block A lift shaft.", status: "FIXED", createdAt: t - 26 * H, ackAt: t - 25.8 * H, fixedAt: t - 24.5 * H },
+    { ...base, id: "seed-2", packId: "construction", category: "no PPE", severity: "MEDIUM", summaryEn: "Helmets short for the evening crew.", status: "ACKNOWLEDGED", createdAt: t - 2 * H, ackAt: t - 1.5 * H },
+    { ...base, id: "seed-4", packId: "construction", category: "heat stress", severity: "MEDIUM", summaryEn: "No shade or water break for the afternoon slab pour.", status: "FIXED", createdAt: t - 50 * H, ackAt: t - 49.7 * H, fixedAt: t - 48.9 * H },
+    { ...base, id: "seed-3", packId: "college", category: "slippery floor", severity: "MEDIUM", summaryEn: "Wet floor outside the chemistry lab, no sign.", status: "OPEN", createdAt: t - 1 * H },
+    { ...base, id: "seed-5", packId: "college", category: "fire exit blocked", severity: "HIGH", summaryEn: "Hostel block B fire exit chained shut at night.", status: "FIXED", createdAt: t - 30 * H, ackAt: t - 29.9 * H, fixedAt: t - 28 * H },
+  ];
+};
 
 // Demo: 4 sealed "drinking water" reports at the construction site (a 5th unlocks the group), 2 "toilets" that
 // stay sealed, and an already unlocked "shift length" group on campus.

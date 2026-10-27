@@ -76,6 +76,9 @@ export async function PATCH(req: Request) {
   const hazard = store.hazards.find((h) => h.id === body.data.id);
   if (!hazard) return Response.json({ error: "not found" }, { status: 404 });
   hazard.status = body.data.status;
+  const now = Date.now();
+  if (hazard.status !== "OPEN") hazard.ackAt ??= now;
+  if (hazard.status === "FIXED") hazard.fixedAt ??= now;
   store.version++;
   return Response.json({ id: hazard.id, status: hazard.status });
 }

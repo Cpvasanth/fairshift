@@ -6,6 +6,10 @@ Repo: none yet (public GitHub repo, single branch `main`, under 10 MB)
 Status: APPROVED
 Mode: Builder
 
+> **Hosting update (2026-10-27):** the organizers allowed Vercel because many teams hit Cloud Run
+> problems. FairShift stays on Vercel with a server-only Gemini API key; the Cloud Run, Docker,
+> Vertex AI and Secret Manager steps are dropped.
+
 ## Problem Statement
 
 Prompt Wars 2026 (SRM ACM Student Chapter), UN SDG 8. Construction sites, colleges, hospitals and
@@ -44,7 +48,7 @@ Skills vanish because the record stays at the old site.
 ## Constraints
 
 - Solo builder, under 6 hours left, stack: Next.js + Node (TypeScript).
-- Hosting: Google Cloud Run only. Public GitHub repo, one branch, under 10 MB.
+- Hosting: Vercel (allowed by the organizers on 2026-10-27; Cloud Run was the original rule). Public GitHub repo, one branch, under 10 MB.
 - Max 2 submissions; the latest score overwrites the first.
 - AI grader: code quality, security (no exposed keys), efficiency, unit tests, accessibility
   (contrast + keyboard nav), problem alignment. At other Prompt Wars events the AI leaderboard
@@ -69,8 +73,8 @@ Skills vanish because the record stays at the old site.
 
 ## Approaches Considered
 
-- **A: Lean Monolith (chosen).** One Next.js app, in-memory store reseeded on boot, Cloud Run
-  pinned to one instance, Gemini on Vertex AI via the service account, dashboard polling.
+- **A: Lean Monolith (chosen).** One Next.js app on Vercel, in-memory store reseeded on boot,
+  Gemini via a server-only API key, dashboard polling.
 - B: Firestore-backed. Rejected: 45-60 min of database, IAM and local-credential setup would eat
   the grader-polish hour.
 - C: Voice-only worker app with Gemini intent routing. Rejected: a misrouted intent live on stage,
@@ -85,13 +89,13 @@ Skills vanish because the record stays at the old site.
  Worker phone (Chrome Android)             Admin laptop / kiosk tablet
    /w  /checkin  /w/pay  /w/hazard  /w/voice     /admin   /kiosk/[siteId]
             \                                      /
-             +------ one Next.js server (standalone) on Cloud Run ------+
+             +------------- one Next.js app on Vercel -----------------+
              |  route handlers (zod-validated) -> lib/* pure functions  |
              |  lib/store.ts: in-memory, globalThis singleton, seed()   |
-             |  lib/ai.ts -> Vertex AI Gemini (service account, no key) |
+             |  lib/ai.ts -> Gemini API (server-only GEMINI_API_KEY)    |
              +----------------------------------------------------------+
-   Cloud Run: max-instances=1 (one shared store), min-instances=1 during judging
-   Secrets: SESSION_SECRET, QR_SECRET, ADMIN_PIN from Secret Manager (--set-secrets)
+   Vercel: the in-memory store is per instance; warm the app up before the demo
+   Secrets: GEMINI_API_KEY, SESSION_SECRET, QR_SECRET, ADMIN_PIN as Vercel sensitive env vars
 ```
 
 Server components read the store directly. Route handlers exist only for mutations and polling.
@@ -156,7 +160,7 @@ person with the least power, which is the SDG 8.8 story in one beat.
 
 ### Buildable scope (hand to implementation)
 
-**Dependencies (runtime):** `@google/genai` (Vertex mode), `zod`, `qrcode` (kiosk only, dynamic
+**Dependencies (runtime):** `@google/genai` (API key, server-only), `zod`, `qrcode` (kiosk only, dynamic
 import), `lucide-react` (icons). Dev: `vitest` plus the create-next-app defaults (TypeScript strict,
 ESLint, Tailwind). Nothing else: no chart lib, UI kit, state lib, date lib, web fonts (Android ships
 Noto Tamil/Devanagari).
@@ -192,7 +196,7 @@ lib/ai.ts rules.ts store.ts seed.ts i18n.ts auth.ts
 messages/en.json ta.json hi.json
 middleware.ts                      CSP nonce only (Edge runtime; no node:crypto here)
 tests/*.test.ts
-Dockerfile .dockerignore .env.example .github/workflows/ci.yml README.md
+.env.example .github/workflows/ci.yml README.md
 ```
 
 Delete the create-next-app boilerplate (default page, Vercel SVGs in `public/`).
@@ -228,8 +232,8 @@ Delete the create-next-app boilerplate (default page, Vercel SVGs in `public/`).
 
 **Gemini contract (`lib/ai.ts`)**
 
-- `new GoogleGenAI({ vertexai: true, project, location })`. Credentials come from the Cloud Run
-  service account (roles/aiplatform.user); locally from `gcloud auth application-default login`.
+- `new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })`, created on first use. The key is a
+  server-only Vercel sensitive env var (never `NEXT_PUBLIC_`); locally it lives in `.env.local`.
   Model name from `GEMINI_MODEL` (a current Flash model); `GOOGLE_CLOUD_LOCATION` = `global` or a
   region that offers that model.
 - One function `analyze(kind, {audio?, mime?, text?}, pack)`. System instruction: "Convert the
@@ -276,8 +280,8 @@ illustrative; the README says to verify the applicable state rule before using r
 
 **Security**
 
-- No API keys anywhere: Gemini via the service account; `SESSION_SECRET`, `QR_SECRET` and
-  `ADMIN_PIN` from Secret Manager. `.env*` gitignored; `.env.example` holds variable names only. No Firebase client
+- No keys in the repo or the browser bundle: `GEMINI_API_KEY`, `SESSION_SECRET`, `QR_SECRET` and
+  `ADMIN_PIN` are Vercel sensitive env vars. `.env*` gitignored; `.env.example` holds variable names only. No Firebase client
   SDK (its public `apiKey` string gets flagged by AI graders).
 - Headers: CSP with a nonce via the Next.js middleware recipe (if it costs more than 20 min, ship
   without `script-src` and say so in the README), `frame-ancestors 'none'`, `nosniff`,
@@ -301,23 +305,14 @@ illustrative; the README says to verify the applicable state rule before using r
   matching voice exists rather than reading Tamil with an English voice.
 - Keyboard-only path to test: login -> hazard (text) -> submit -> admin Acknowledged -> Fixed.
 
-**Efficiency / Cloud Run**
+**Efficiency / Vercel**
 
-- `output: 'standalone'`; multi-stage Dockerfile on `node:22-slim`, non-root user, `ENV PORT=8080`
-  and `ENV HOSTNAME=0.0.0.0` (otherwise Next binds to the container hostname), `CMD ["node","server.js"]`.
-  `.dockerignore` excludes `node_modules`, `.next`, `.git`, `.env*`.
+- No Docker image: Vercel builds the app on push to `main`. `GEMINI_API_KEY`, `SESSION_SECRET`,
+  `QR_SECRET`, `ADMIN_PIN` and `DEMO_LIVE_RELEASE=true` are Vercel sensitive env vars, never committed.
 - Polling every 4s with `?v=`; 204 when unchanged; pause on `visibilitychange` hidden.
-- Deploy:
-  ```
-  gcloud run deploy fairshift --source . --region asia-south1 \
-    --max-instances 1 --min-instances 1 --memory 512Mi \
-    --service-account fairshift-run@PROJECT_ID.iam.gserviceaccount.com \
-    --set-env-vars GOOGLE_CLOUD_PROJECT=PROJECT_ID,GOOGLE_CLOUD_LOCATION=global,GEMINI_MODEL=MODEL,DEMO_LIVE_RELEASE=true \
-    --set-secrets SESSION_SECRET=fairshift-session:latest,QR_SECRET=fairshift-qr:latest,ADMIN_PIN=fairshift-admin-pin:latest \
-    --allow-unauthenticated
-  ```
-  Service account roles: `roles/aiplatform.user`, `roles/secretmanager.secretAccessor`. Drop
-  min-instances to 0 after judging.
+- The in-memory store and rate limiter are per function instance. On a quiet demo one warm instance
+  serves everything, so open the app a minute before presenting. If data must survive cold starts or
+  be shared across instances, move the store to Upstash Redis (Vercel Marketplace).
 
 **Tests (Vitest, ~35, pure, no network)**
 
@@ -348,7 +343,7 @@ illustrative; the README says to verify the applicable state rule before using r
 4. Architecture diagram, run / test / deploy commands, demo worker accounts (demo-only; the admin
    PIN is given to judges directly).
 5. Security and accessibility notes (what was done, how it was checked).
-6. Limitations, honestly: in-memory demo store; 60s QR replay window; Cloud Run request logs keep
+6. Limitations, honestly: in-memory demo store; 60s QR replay window; Vercel request logs keep
    IP and time, so someone with project access could correlate anonymous submissions; anyone
    holding `SESSION_SECRET` can recompute submitter tags for a small roster; `DEMO_LIVE_RELEASE`
    releases sealed reports live instead of in the daily batch; rule packs are defaults, not legal
@@ -357,7 +352,7 @@ illustrative; the README says to verify the applicable state rule before using r
 ### AI grader risk register (most points at risk first)
 
 1. **Exposed keys:** a Gemini/Firebase key in client code, `.env` committed, a key in Dockerfile `ENV`.
-   Fix: service account + Secret Manager + the grep in the checklist.
+   Fix: server-only Vercel env vars + the grep in the checklist.
 2. **Weak tests:** render-only or skipped tests. Fix: the pure-logic suite above, CI on main.
 3. **Accessibility:** div-buttons, hold-only mic, color-only severity, missing `lang`, Tailwind
    gray-400 text. Fix: the accessibility list; Lighthouse + axe on both UIs.
@@ -366,14 +361,14 @@ illustrative; the README says to verify the applicable state rule before using r
 5. **Code quality:** one 800-line page, `any`, leftover boilerplate, `console.log`. Fix: lib/
    modules, strict TS, delete boilerplate.
 6. **Efficiency:** heavy dependencies, unthrottled polling, committed `node_modules`/`.next`/media.
-7. **Cloud Run:** not binding `0.0.0.0:$PORT`; more than one instance with an in-memory store;
-   cold start wiping live demo data. Fix: HOSTNAME env, max/min instances 1.
+7. **Vercel instances:** each instance has its own in-memory store, and a cold start wipes live
+   demo data. Fix: warm the app before the demo, reset seed state, Upstash Redis if it must persist.
 8. **Submission #2 overwrites #1.** Use #2 only for a verified improvement, with the checklist re-run.
 9. **Prompt injection via worker text:** system instruction treats input as data, schema-constrained
    output, React escaping on display.
 10. **Functional GenAI:** Gemini sits inside two features' core loop, not a chatbot bolted on.
 11. **Hardcoded credentials:** worker demo PINs sit in `seed.ts` under a DEMO-ONLY comment and a
-    README note; the admin PIN lives only in Secret Manager.
+    README note; the admin PIN lives only in a Vercel env var.
 
 ### Pre-submit checklist (run before each submission)
 
@@ -411,20 +406,20 @@ tab. Reset with `POST /api/admin/reset` right before presenting.
 
 ## Open Questions
 
-- Does Gemini on Vertex accept `audio/webm;codecs=opus` from Chrome's MediaRecorder? Verify in the
+- Does Gemini accept `audio/webm;codecs=opus` from Chrome's MediaRecorder? Verify in the
   spike. If not, the text box plus Gboard's mic (voice typing in Tamil) is the fallback.
 - Does the demo phone have a Tamil `speechSynthesis` voice installed?
 - Exact section number for the overtime rule: legal summaries cite OSH Code 2020 s.27 (in force
   since 21 Nov 2025). Confirm it against the official text, and confirm the 2x rule covers a
   contract security guard at a college (establishment type, contractor employment), before saying
   it on stage.
-- Does this event's AI grader also score "Google services" usage? If yes, mention Vertex AI, Secret
-  Manager and Cloud Run explicitly in the README.
+- Does this event's AI grader also score "Google services" usage? If yes, mention the Gemini API
+  explicitly in the README.
 - Visual mockups were skipped to save the clock; the screen list above is the spec.
 
 ## Success Criteria
 
-- All 3 features work end to end on the deployed Cloud Run URL from a real Android phone.
+- All 3 features work end to end on the deployed Vercel URL from a real Android phone.
 - 20+ passing unit tests, green in GitHub Actions on `main`.
 - Lighthouse accessibility >= 95 on both UIs; the keyboard-only path passes.
 - The key grep is empty; no secrets in the repo or the image.
@@ -433,9 +428,8 @@ tab. Reset with `POST /api/admin/reset` right before presenting.
 
 ## Distribution Plan
 
-Web service on Cloud Run, deployed with `gcloud run deploy --source .` from the laptop (Cloud
-Build builds the Dockerfile). GitHub Actions runs lint and tests only, so no deploy credential
-lives in GitHub. Workers open the URL in Chrome; "Add to Home screen" is enough (no service worker).
+Web app on Vercel, built and deployed on every push to `main`. GitHub Actions runs lint and tests
+only, so no deploy credential lives in GitHub. Workers open the URL in Chrome; "Add to Home screen" is enough (no service worker).
 
 ## Next Steps (6-hour timeline)
 
