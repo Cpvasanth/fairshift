@@ -12,6 +12,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # npm install, not npm ci: the Windows-made lockfile omits Linux-only optional deps (@emnapi/*).
+      - run: npm install --no-audit --no-fund
       - run: npm run lint
       - run: npm test

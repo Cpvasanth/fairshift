@@ -46,7 +46,7 @@ Worker phone (/w/[id])            Admin (/admin?site=...)
 ## Run, test, deploy
 
 ```bash
-npm ci
+npm install
 cp .env.example .env.local   # set GEMINI_API_KEY (server-only, never NEXT_PUBLIC_)
 npm run dev
 npm test                     # Vitest: pay, fatigue, severity
