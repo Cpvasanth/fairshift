@@ -22,6 +22,8 @@ phone and has no say over the paper register. Second persona: the site admin who
 - **AI listens, rules decide.** Gemini turns Tamil speech or text into schema-constrained JSON. Pay, overtime, fatigue
   flags, severity floors and the Sealed Voice unlock threshold are plain functions with unit tests.
 - **Decisions are explainable.** Every flag states its rule and an action ("13 days without rest: schedule a day off").
+- **A shift assistant decides the next step.** `lib/assistant.ts` turns each person's own context into ranked next
+  steps, each with the rule behind it (see *How FairShift decides* below).
 
 ## How it works
 
@@ -30,11 +32,29 @@ phone and has no say over the paper register. Second persona: the site admin who
 | Landing page `/` | Live Shift Receipt hero, key figures, problem → features story, worker tiles, rule-pack comparison | `app/page.tsx` |
 | Worker app `/w/[id]` | Key figures and the worker's own rest flags; weekly pay receipt with overtime bars and Tamil read-aloud; Voice Hazard recorder; "Speak up (sealed)" | `app/w/[id]/page.tsx`, `components/HazardReporter.tsx`, `components/SpeakButton.tsx` |
 | Admin dashboard `/admin?site=` | Key figures, hazard-resolution gauge, crew hours chart, worker × day heatmap, filterable live hazards (cards on phones), attention list, Sealed Voice, crew pay table with CSV export | `app/admin/page.tsx`, `components/LiveWidgets.tsx`, `components/Kpi.tsx` |
+| Shift assistant | Worker: "What to do next" in English + Tamil, read aloud. Admin: ranked "Do this first" | `lib/assistant.ts`, `app/w/[id]/page.tsx`, `components/LiveWidgets.tsx` |
 | Live data | One poller for the whole dashboard (4s, 204 when unchanged, paused when hidden) | `components/live.tsx` |
 | Shared UI | One look on all three screens: top bar, cards, key figures, status pills | `components/TopBar.tsx`, `components/Card.tsx`, `components/Kpi.tsx`, `components/StatusBadge.tsx` |
 | API | Hazards POST/GET/PATCH and Sealed Voice in one route (shares one in-memory store) | `app/api/hazards/route.ts`, `lib/store.ts` |
-| Rules (tested) | Pay, fatigue, severity floor, Sealed Voice grouping, rule packs, rate limit | `lib/pay.ts`, `lib/fatigue.ts`, `lib/severity.ts`, `lib/sealed.ts`, `lib/rules.ts`, `lib/ratelimit.ts` |
+| Rules (tested) | Pay, fatigue, severity floor, Sealed Voice grouping, site totals and CSV, rule packs, rate limit | `lib/pay.ts`, `lib/fatigue.ts`, `lib/severity.ts`, `lib/sealed.ts`, `lib/crew.ts`, `lib/rules.ts`, `lib/ratelimit.ts` |
 | AI | Gemini, schema-constrained JSON, temperature 0, falls back across models on quota errors | `lib/ai.ts` |
+
+## How FairShift decides (user context → decision)
+
+| Who | Context | Decision (most urgent first) | Why it is shown |
+|---|---|---|---|
+| Worker | 7+ days in a row | Act now: ask for a day off | 7+ days without rest is HIGH |
+| Worker | Over 60h (or 48h) in 7 days | Act now (or Check): ask for shorter shifts | Over 48h/week is overtime; over 60h is HIGH |
+| Worker | Under 10h between shifts | Check: start later tomorrow | At least 10h rest between shifts |
+| Worker | Any overtime | Check: pay slip shows the overtime amount | Over 8h/day or 48h/week is paid at 2× |
+| Worker | None of the above | All good | Within the site's rule pack |
+| Admin | Open HIGH hazard | 1. Fix it (oldest first) | Safety first |
+| Admin | Report Gemini could not read | 2. Read the original report | Never lose a report |
+| Admin | Worker with a HIGH fatigue flag | 3. Take the flag's action | Overwork before feedback |
+| Admin | Open MEDIUM hazard, unlocked Sealed Voice theme, WARN flag, LOW hazard | 4–7, in that order | Lower risk |
+
+The same report or shift gives a different, correct decision under each site's rule pack. Tested in
+`tests/assistant.test.ts`.
 
 ## Assumptions
 
@@ -48,6 +68,7 @@ phone and has no say over the paper register. Second persona: the site admin who
 | Worker pain | FairShift feature | Code | SDG 8 target |
 |---|---|---|---|
 | Pay and overtime are opaque | **Shift Receipt**: day-by-day hours, regular × rate, overtime × 2 × rate, total owed, read aloud in Tamil | `lib/pay.ts`, `app/w/[id]/page.tsx` | 8.5 equal pay, 8.8 labour rights |
+| Workers and admins don't know what to act on first | **Shift assistant**: ranked next steps from each person's own records, each with its rule | `lib/assistant.ts` | 8.8, 8.5 |
 | Hazards ignored, reporters identified | **Voice Hazard**: speak or type in Tamil → Gemini → HIGH card on the admin board → Acknowledged → Fixed → status read aloud on the worker's phone. No reporter identity stored | `app/api/hazards/route.ts`, `lib/ai.ts`, `lib/severity.ts`, `components/HazardReporter.tsx` | 8.8 safe working environments |
 | Overwork goes unseen | **Attention list**: explainable fatigue flags with an action ("13 days without rest: schedule a day off") | `lib/fatigue.ts`, `app/admin/page.tsx` | 8.8, 8.5 |
 
@@ -84,7 +105,7 @@ Worker phone (/w/[id])            Admin (/admin?site=...)
 npm install
 cp .env.example .env.local   # set GEMINI_API_KEY (server-only, never NEXT_PUBLIC_)
 npm run dev
-npm test                     # Vitest: pay, fatigue, severity, sealed, rate limit
+npm test                     # Vitest (46 tests): pay, fatigue, severity, sealed, assistant, crew, format, rate limit
 npm run lint
 ```
 
