@@ -1,10 +1,15 @@
 import type { Pack } from "./rules";
 
 export type Shift = { start: number; minutes: number }; // start = epoch ms
+export type Week = ReturnType<typeof computeWeek>;
 
 const IST = 5.5 * 3_600_000;
+const DAY = 86_400_000;
 // A shift counts to the Asia/Kolkata date it started on (night shifts included).
 export const dayKey = (t: number) => new Date(t + IST).toISOString().slice(0, 10);
+
+// The pay window: shifts that started in the 7 days before `now`.
+export const lastWeek = (shifts: Shift[], now: number) => shifts.filter((s) => s.start >= now - 7 * DAY);
 
 // Integer minutes and integer paise; no floats until display.
 export function computeWeek(shifts: Shift[], pack: Pack, wagePaise: number) {
@@ -30,12 +35,3 @@ export function computeWeek(shifts: Shift[], pack: Pack, wagePaise: number) {
     totalPaise: regularPaise + otPaise,
   };
 }
-
-export const rupees = (paise: number) =>
-  `Rs ${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-export const hours = (minutes: number) => +(minutes / 60).toFixed(1);
-// Whole rupees for headline figures ("₹8,050"); receipts keep paise via rupees().
-export const inr = (paise: number) => `₹${Math.round(paise / 100).toLocaleString("en-IN")}`;
-// "2026-10-27" -> "Tue" (the date is already an Asia/Kolkata day key).
-export const weekday = (date: string) =>
-  new Date(`${date}T00:00:00Z`).toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" });

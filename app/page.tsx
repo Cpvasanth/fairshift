@@ -11,6 +11,7 @@ import {
   IndianRupee,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   LockKeyhole,
   Mic,
   Receipt,
@@ -25,16 +26,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Card from "@/components/Card";
+import { DayBar } from "@/components/DayBar";
 import Kpi from "@/components/Kpi";
+import { LevelBadge } from "@/components/StatusBadge";
 import TopBar, { type NavItem } from "@/components/TopBar";
-import { flags } from "@/lib/fatigue";
-import { computeWeek, hours, inr, rupees, weekday } from "@/lib/pay";
+import { siteWeek, workerWeek } from "@/lib/crew";
+import { hours, inr, rupees, weekday } from "@/lib/format";
 import { packs } from "@/lib/rules";
-import { recentShifts, seededAt, workers } from "@/lib/seed";
+import { seededAt, workers } from "@/lib/seed";
 
 const roleIcon: Record<string, typeof HardHat> = { murugan: HardHat, selvi: HardHat, ravi: ShieldCheck, lakshmi: Brush };
 const siteIcon: Record<string, typeof HardHat> = { construction: HardHat, college: GraduationCap };
-const stripes = "repeating-linear-gradient(45deg, transparent 0 5px, rgba(0,0,0,.25) 5px 8px)";
 const chip = "w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1";
 
 const nav: NavItem[] = [
@@ -74,10 +76,10 @@ const features = [
     text: "Anonymous is fake on a five-person crew. Feedback stays sealed until 5 workers raise the same issue.",
   },
   {
-    Icon: HeartPulse,
-    title: "Attention list",
+    Icon: ListChecks,
+    title: "Shift assistant",
     sdg: "SDG 8.8",
-    text: "Explainable fatigue rules with an action: 13 days without rest means schedule a day off, not a risk score.",
+    text: "Rules turn each person's own records into a next step, with the reason: “Ask for a day off”, “Fix the HIGH hazard first”.",
   },
 ];
 
@@ -89,15 +91,14 @@ const loop = [
 ];
 
 export default function Home() {
-  const crew = Object.values(workers).map((w) => {
-    const rest = flags(w.shifts, seededAt);
-    return { w, pay: computeWeek(recentShifts(w), packs[w.packId], w.wagePaise), flagged: rest.length > 0, high: rest.some((f) => f.level === "HIGH") };
-  });
-  const otPaise = crew.reduce((a, c) => a + c.pay.otPaise, 0);
-  const otHours = hours(crew.reduce((a, c) => a + c.pay.otMinutes, 0));
-  const ravi = crew.find((c) => c.w.id === "ravi")!;
-  const raviPack = packs[ravi.w.packId];
-  const raviMax = Math.max(...ravi.pay.days.map((d) => d.minutes), raviPack.dailyHours * 60);
+  const sites = Object.values(packs).map((pack) => ({ pack, ...siteWeek(Object.values(workers), pack, seededAt) }));
+  const crew = sites.flatMap((s) => s.crew);
+  const otPaise = sites.reduce((a, s) => a + s.otPaise, 0);
+  const otHours = hours(sites.reduce((a, s) => a + s.otMinutes, 0));
+  const raviPack = packs.college;
+  const ravi = workerWeek(workers.ravi, raviPack, seededAt);
+  const nightLimit = raviPack.dailyHours * 60;
+  const raviMax = Math.max(...ravi.pay.days.map((d) => d.minutes), nightLimit);
 
   return (
     <div className="min-h-full bg-slate-100">
@@ -150,8 +151,8 @@ export default function Home() {
               <Kpi
                 label="Need rest"
                 caption="Workers flagged, each with an action"
-                value={`${crew.filter((c) => c.flagged).length}/${crew.length}`}
-                note={`${crew.filter((c) => c.high).length} HIGH`}
+                value={`${crew.filter((c) => c.flags.length > 0).length}/${crew.length}`}
+                note={`${crew.filter((c) => c.flags.some((f) => f.level === "HIGH")).length} HIGH`}
                 tone="red"
                 Icon={HeartPulse}
               />
@@ -169,21 +170,18 @@ export default function Home() {
               {ravi.w.name} · {ravi.w.role}
             </p>
             <p className="text-sm text-slate-600">{raviPack.site}</p>
-            <ul aria-label="Hours per night" className="mt-4 flex h-24 items-end gap-1.5">
+            <ul aria-label="Hours per night" className="sr-only">
               {ravi.pay.days.map((d) => (
-                <li key={d.date} className="flex flex-1 flex-col overflow-hidden rounded-lg" style={{ height: `${(d.minutes / raviMax) * 100}%` }}>
-                  <span className="sr-only">
-                    {weekday(d.date)}: {hours(d.minutes)} hours
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="bg-amber-400"
-                    style={{ height: `${(Math.max(0, d.minutes - raviPack.dailyHours * 60) / d.minutes) * 100}%`, backgroundImage: stripes }}
-                  />
-                  <span aria-hidden="true" className="flex-1 bg-indigo-500" />
+                <li key={d.date}>
+                  {weekday(d.date)}: {hours(d.minutes)} hours
                 </li>
               ))}
             </ul>
+            <div aria-hidden="true" className="mt-4 flex h-24 items-end gap-1.5">
+              {ravi.pay.days.map((d) => (
+                <DayBar key={d.date} minutes={d.minutes} otMinutes={Math.max(0, d.minutes - nightLimit)} max={raviMax} />
+              ))}
+            </div>
             <dl className="mt-4 space-y-1.5 text-sm tabular-nums">
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-700">
@@ -265,7 +263,7 @@ export default function Home() {
         <Card id="workers" title="Try the worker app" Icon={Smartphone}>
           <p className="-mt-2 mb-5 text-slate-600">Built for low-end Android phones: big targets, Tamil first, voice in and out.</p>
           <div className="grid gap-4 lg:grid-cols-2">
-            {Object.values(packs).map((p) => {
+            {sites.map(({ pack: p, crew: siteCrew }) => {
               const SiteIcon = siteIcon[p.id] ?? Factory;
               return (
                 <section key={p.id} aria-labelledby={`${p.id}-h`} className="rounded-2xl bg-slate-50 p-4 sm:p-5">
@@ -275,9 +273,7 @@ export default function Home() {
                   </h3>
                   <p className="text-sm text-slate-600">{p.site}</p>
                   <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {crew
-                      .filter((c) => c.w.packId === p.id)
-                      .map(({ w, pay, flagged }) => {
+                    {siteCrew.map(({ w, pay, flags }) => {
                         const Icon = roleIcon[w.id] ?? HardHat;
                         return (
                           <li key={w.id}>
@@ -293,10 +289,9 @@ export default function Home() {
                               <span className="text-sm text-slate-600">{w.role}</span>
                               <span className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">{inr(pay.totalPaise)}</span>
                               <span className="text-sm text-slate-600">owed for {hours(pay.totalMinutes)}h this week</span>
-                              {flagged && (
-                                <span className="mt-2 w-fit rounded-lg bg-red-700 px-2 py-0.5 text-xs font-bold text-white">
-                                  <span aria-hidden="true">▲ </span>
-                                  Needs rest
+                              {flags.length > 0 && (
+                                <span className="mt-2">
+                                  <LevelBadge level={flags.some((f) => f.level === "HIGH") ? "HIGH" : "WARN"} label="Needs rest" />
                                 </span>
                               )}
                             </Link>

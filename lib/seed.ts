@@ -33,5 +33,4 @@ export const workers: Record<string, Worker> = {
   },
 };
 
-export const recentShifts = (w: Worker) => w.shifts.filter((s) => s.start >= now - 7 * DAY);
 export { now as seededAt };

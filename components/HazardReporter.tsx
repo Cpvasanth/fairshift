@@ -2,13 +2,12 @@
 
 import { Lock, LockKeyhole, Mic, Square, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { Severity } from "@/lib/rules";
+import type { Filed, Receipt, SealedFiled } from "@/lib/api";
 import type { Status } from "@/lib/store";
 import Card from "./Card";
 import { speak } from "./SpeakButton";
 import { SeverityBadge, StatusBadge } from "./StatusBadge";
 
-type Report = { id: string; status: Status; category: string; severity: Severity };
 // Every message is English plus Tamil; the Tamil half is rendered with lang="ta" so it is pronounced correctly.
 type Msg = { en: string; ta?: string };
 
@@ -38,7 +37,7 @@ const loadIds = (): string[] => {
 // kind="voice" reuses the recorder for Sealed Voice: no receipt ids, no status polling.
 export default function HazardReporter({ packId, kind = "hazard" }: { packId: string; kind?: "hazard" | "voice" }) {
   const [ids, setIds] = useState<string[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
+  const [reports, setReports] = useState<Receipt[]>([]);
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -61,7 +60,7 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
       if (document.hidden) return;
       const res = await fetch(`/api/hazards?ids=${ids.join(",")}`).catch(() => null);
       if (!res?.ok || !live) return;
-      const list: Report[] = await res.json();
+      const list: Receipt[] = await res.json();
       for (const r of list) {
         if (seen.current[r.id] && seen.current[r.id] !== r.status) {
           speak(said[r.status]);
@@ -90,22 +89,23 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
         setMsg({ en: "Too many reports from this phone. Please wait a few minutes.", ta: "சில நிமிடங்கள் கழித்து முயற்சிக்கவும்." });
         return;
       }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (kind === "voice") {
         setText("");
-        setMsg({ en: `Sealed under "${data.theme}". It opens only when 5 workers here raise the same issue.`, ta: SEALED_TA });
+        const { theme }: SealedFiled = await res.json();
+        setMsg({ en: `Sealed under "${theme}". It opens only when 5 workers here raise the same issue.`, ta: SEALED_TA });
         speak(SEALED_TA);
         return;
       }
-      const next = [data.id, ...ids].slice(0, 20);
+      const filed: Filed = await res.json();
+      const next = [filed.id, ...ids].slice(0, 20);
       try {
         localStorage.setItem(KEY, JSON.stringify(next));
       } catch {}
-      seen.current[data.id] = "OPEN";
+      seen.current[filed.id] = "OPEN";
       setIds(next);
       setText("");
-      setMsg({ en: `Reported: ${data.category}, ${data.severity}.`, ta: said.OPEN });
+      setMsg({ en: `Reported: ${filed.category}, ${filed.severity}.`, ta: said.OPEN });
       speak(said.OPEN);
     } catch {
       setMsg({ en: "Could not send. Please try again.", ta: "அனுப்ப முடியவில்லை." });

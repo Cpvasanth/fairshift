@@ -27,3 +27,5 @@ export function unlockedGroups(items: SealedItem[], now: number, k = 5) {
     .filter((g) => g.length >= k)
     .map((g) => ({ packId: g[0].packId, theme: g[0].theme, count: g.length, summaries: g.map((i) => i.summaryEn) }));
 }
+
+export type Group = ReturnType<typeof unlockedGroups>[number];

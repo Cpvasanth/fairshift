@@ -2,19 +2,13 @@
 
 import { Bell, Check, CircleDot, Eye, Lock, LockOpen, Radio, Timer, TriangleAlert } from "lucide-react";
 import { useState } from "react";
+import { adminPriorities, type Person } from "@/lib/assistant";
+import { ago } from "@/lib/format";
 import type { Severity } from "@/lib/rules";
 import type { Hazard, Status } from "@/lib/store";
 import Kpi from "./Kpi";
 import { useLive } from "./live";
-import { SeverityBadge } from "./StatusBadge";
-
-export const ago = (ms: number) => {
-  const m = Math.max(0, Math.round(ms / 60_000));
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
-};
+import { SeverityBadge, UrgencyBadge } from "./StatusBadge";
 
 const open = (hs: Hazard[]) => hs.filter((h) => h.status !== "FIXED");
 
@@ -36,14 +30,14 @@ export function OpenHazardsKpi() {
 
 export function FixTimeKpi() {
   const { hazards } = useLive();
-  const fixed = hazards.filter((h) => h.fixedAt);
-  const avg = fixed.length ? fixed.reduce((a, h) => a + (h.fixedAt! - h.createdAt), 0) / fixed.length : null;
+  const times = hazards.flatMap((h) => (h.fixedAt ? [h.fixedAt - h.createdAt] : []));
+  const avg = times.length ? times.reduce((a, t) => a + t, 0) / times.length : null;
   return (
     <Kpi
       label="Time to fix"
       caption="Average, report to fixed"
       value={avg === null ? "–" : ago(avg)}
-      note={`${fixed.length} fixed`}
+      note={`${times.length} fixed`}
       tone="indigo"
       Icon={Timer}
     />
@@ -125,6 +119,24 @@ const statusText: Record<Status, { label: string; cls: string; Icon: typeof Eye 
 const order: Record<Status, number> = { OPEN: 0, ACKNOWLEDGED: 1, FIXED: 2 };
 const sevOrder: Record<Severity, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
+// [value, label] pairs for the filters; the first pair is the default.
+const statusFilters = [
+  ["ALL", "All statuses"],
+  ["OPEN", "Open"],
+  ["ACKNOWLEDGED", "Seen"],
+  ["FIXED", "Fixed"],
+] as const;
+const severityFilters = [
+  ["ALL", "All severities"],
+  ["HIGH", "HIGH"],
+  ["MEDIUM", "MEDIUM"],
+  ["LOW", "LOW"],
+] as const;
+type Options = readonly (readonly [string, string])[];
+type Value<T extends Options> = T[number][0];
+// Narrow a <select> value back to one of its options without a type cast.
+const option = <T extends Options>(options: T, value: string): Value<T> => options.find(([v]) => v === value)?.[0] ?? options[0][0];
+
 function StatusText({ status }: { status: Status }) {
   const s = statusText[status];
   return (
@@ -180,8 +192,8 @@ function HazardActions({ h, setStatus }: { h: Hazard; setStatus: (id: string, st
 
 export function HazardTable() {
   const { hazards, now, setStatus } = useLive();
-  const [status, setFilter] = useState<"ALL" | Status>("ALL");
-  const [severity, setSeverity] = useState<"ALL" | Severity>("ALL");
+  const [status, setFilter] = useState<Value<typeof statusFilters>>("ALL");
+  const [severity, setSeverity] = useState<Value<typeof severityFilters>>("ALL");
   const rows = hazards
     .filter((h) => (status === "ALL" || h.status === status) && (severity === "ALL" || h.severity === severity))
     .sort((a, b) => order[a.status] - order[b.status] || sevOrder[a.severity] - sevOrder[b.severity] || b.createdAt - a.createdAt)
@@ -200,20 +212,22 @@ export function HazardTable() {
         <label className="sr-only" htmlFor="f-status">
           Filter by status
         </label>
-        <select id="f-status" className={select} value={status} onChange={(e) => setFilter(e.target.value as typeof status)}>
-          <option value="ALL">All statuses</option>
-          <option value="OPEN">Open</option>
-          <option value="ACKNOWLEDGED">Seen</option>
-          <option value="FIXED">Fixed</option>
+        <select id="f-status" className={select} value={status} onChange={(e) => setFilter(option(statusFilters, e.target.value))}>
+          {statusFilters.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
         <label className="sr-only" htmlFor="f-sev">
           Filter by severity
         </label>
-        <select id="f-sev" className={select} value={severity} onChange={(e) => setSeverity(e.target.value as typeof severity)}>
-          <option value="ALL">All severities</option>
-          <option value="HIGH">HIGH</option>
-          <option value="MEDIUM">MEDIUM</option>
-          <option value="LOW">LOW</option>
+        <select id="f-sev" className={select} value={severity} onChange={(e) => setSeverity(option(severityFilters, e.target.value))}>
+          {severityFilters.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
         <span className="ml-auto">
           <LiveStamp />
@@ -326,5 +340,36 @@ export function SealedList() {
         </li>
       ))}
     </ul>
+  );
+}
+
+// "Do this first": the admin's ranked next steps, decided by lib/assistant.ts from live hazards, fatigue flags
+// and unlocked Sealed Voice themes. Each step links to the panel where it is handled.
+export function PriorityList({ people }: { people: Person[] }) {
+  const { hazards, groups, now } = useLive();
+  if (now === null) return <p className="text-slate-600">Checking live hazards…</p>;
+  const steps = adminPriorities(hazards, people, groups, now);
+  if (steps.length === 0)
+    return (
+      <p className="flex items-center gap-2 rounded-xl bg-emerald-50 p-4 text-emerald-900">
+        <Check aria-hidden="true" className="size-5 shrink-0" />
+        Nothing urgent: every hazard is fixed and the crew is within limits.
+      </p>
+    );
+  return (
+    <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {steps.map((p, i) => (
+        <li key={p.id}>
+          <a href={p.href} className="flex h-full flex-col gap-2 rounded-2xl border border-slate-200 p-4 hover:border-slate-950">
+            <span className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">{i + 1}</span>
+              <UrgencyBadge urgency={p.urgency} />
+            </span>
+            <span className="font-semibold text-slate-950">{p.title}</span>
+            <span className="text-sm text-slate-600">{p.why}</span>
+          </a>
+        </li>
+      ))}
+    </ol>
   );
 }

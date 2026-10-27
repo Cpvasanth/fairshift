@@ -1,4 +1,5 @@
 import { Check, CircleDot, Eye } from "lucide-react";
+import type { Urgency } from "@/lib/assistant";
 import type { Severity } from "@/lib/rules";
 import type { Status } from "@/lib/store";
 
@@ -34,4 +35,25 @@ export function StatusBadge({ status: s }: { status: Status }) {
       {en} · <span lang="ta">{ta}</span>
     </span>
   );
+}
+
+// Solid badge for fatigue flags and assistant steps. With a custom label, the level is still announced.
+const solid = { HIGH: ["▲", "bg-red-700"], WARN: ["●", "bg-amber-800"], OK: ["✓", "bg-emerald-700"] } as const;
+
+export function LevelBadge({ level, label = level }: { level: keyof typeof solid; label?: string }) {
+  const [icon, bg] = solid[level];
+  return (
+    <span className={`inline-flex w-fit shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 text-xs leading-tight font-bold text-white ${bg}`}>
+      <span aria-hidden="true">{icon}</span>
+      {label !== level && <span className="sr-only">{level}: </span>}
+      {label}
+    </span>
+  );
+}
+
+const urgency = { act: ["HIGH", "Act now"], check: ["WARN", "Check"], ok: ["OK", "All good"] } as const;
+
+export function UrgencyBadge({ urgency: u }: { urgency: Urgency }) {
+  const [level, label] = urgency[u];
+  return <LevelBadge level={level} label={label} />;
 }

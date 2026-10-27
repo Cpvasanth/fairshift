@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { analyze, analyzeVoice } from "@/lib/ai";
+import { analyze, analyzeVoice, type Input } from "@/lib/ai";
+import type { Board, Filed, Receipt, SealedFiled } from "@/lib/api";
 import { clientKey, hit, type Window } from "@/lib/ratelimit";
 import { packs } from "@/lib/rules";
 import { isoWeek, unlockedGroups } from "@/lib/sealed";
@@ -16,31 +17,45 @@ const REPORTS_PER_WINDOW = 8;
 const WINDOW_MS = 10 * 60_000;
 const windows = new Map<string, Window>();
 
+// Multipart fields besides the audio file. Own keys only, so "constructor" or "__proto__" is never a site.
+const reportFields = z.object({
+  packId: z.string().refine((id) => Object.hasOwn(packs, id)),
+  kind: z.enum(["hazard", "voice"]),
+  text: z.string().trim().max(MAX_TEXT).optional(),
+});
+const bad = (error: string, status = 400) => Response.json({ error }, { status });
+
 export async function POST(req: Request) {
   const limit = hit(windows, clientKey(req.headers), REPORTS_PER_WINDOW, WINDOW_MS, Date.now());
   if (!limit.ok)
     return Response.json({ error: "too many reports" }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
-  const form = await req.formData();
-  const pack = packs[String(form.get("packId"))];
-  if (!pack) return Response.json({ error: "unknown site" }, { status: 400 });
+  const form = await req.formData().catch(() => null);
+  if (!form) return bad("expected multipart form data");
+  const fields = reportFields.safeParse({
+    packId: form.get("packId"),
+    kind: form.get("kind") ?? "hazard",
+    text: form.get("text") ?? undefined,
+  });
+  if (!fields.success) return bad(`unknown site, or text over ${MAX_TEXT} chars`);
+  const { kind, text } = fields.data;
+  const pack = packs[fields.data.packId];
   const audio = form.get("audio");
-  const text = form.get("text");
-  let input;
+  let input: Input;
   if (audio instanceof File && audio.size > 0) {
-    if (audio.size > MAX_AUDIO) return Response.json({ error: "audio over 1 MB" }, { status: 413 });
+    if (audio.size > MAX_AUDIO) return bad("audio over 1 MB", 413);
     // Gemini wants the bare mime type ("audio/webm"), not "audio/webm;codecs=opus". Audio is never stored.
     input = { audio: Buffer.from(await audio.arrayBuffer()), mime: audio.type.split(";")[0] || "audio/webm" };
-  } else if (typeof text === "string" && text.trim() && text.length <= MAX_TEXT) {
-    input = { text: text.trim() };
+  } else if (text) {
+    input = { text };
   } else {
-    return Response.json({ error: `send audio or text (<= ${MAX_TEXT} chars)` }, { status: 400 });
+    return bad("send audio or text");
   }
-  if (form.get("kind") === "voice") {
+  if (kind === "voice") {
     // Site, theme, English summary and ISO week only: no worker id, no timestamp.
     const { theme, summaryEn } = await analyzeVoice(input, pack);
     store.voices.push({ packId: pack.id, theme, summaryEn, week: isoWeek(Date.now()) });
     store.version++;
-    return Response.json({ theme });
+    return Response.json({ theme } satisfies SealedFiled);
   }
   const a = await analyze(input, pack);
   const hazard: Hazard = {
@@ -57,7 +72,7 @@ export async function POST(req: Request) {
   };
   store.hazards.unshift(hazard);
   store.version++;
-  return Response.json({ id: hazard.id, category: hazard.category, severity: hazard.severity, summaryEn: hazard.summaryEn });
+  return Response.json({ id: hazard.id, category: hazard.category, severity: hazard.severity, summaryEn: hazard.summaryEn } satisfies Filed);
 }
 
 // Worker: ?ids=a,b -> status of their own receipts only. Admin board: ?v=<version> -> 204 when unchanged.
@@ -69,20 +84,20 @@ export async function GET(req: Request) {
   if (ids !== null) {
     const wanted = new Set(ids.split(",").slice(0, 50));
     return Response.json(
-      store.hazards.filter((h) => wanted.has(h.id)).map(({ id, status, category, severity }) => ({ id, status, category, severity })),
+      store.hazards.filter((h) => wanted.has(h.id)).map(({ id, status, category, severity }): Receipt => ({ id, status, category, severity })),
     );
   }
   if (params.get("v") === String(store.version)) return new Response(null, { status: 204 });
-  return Response.json({ version: store.version, hazards: store.hazards });
+  return Response.json({ version: store.version, hazards: store.hazards } satisfies Board);
 }
 
 const patchBody = z.object({ id: z.string().max(64), status: z.enum(["OPEN", "ACKNOWLEDGED", "FIXED"]) });
 
 export async function PATCH(req: Request) {
   const body = patchBody.safeParse(await req.json().catch(() => null));
-  if (!body.success) return Response.json({ error: "bad request" }, { status: 400 });
+  if (!body.success) return bad("bad request");
   const hazard = store.hazards.find((h) => h.id === body.data.id);
-  if (!hazard) return Response.json({ error: "not found" }, { status: 404 });
+  if (!hazard) return bad("not found", 404);
   hazard.status = body.data.status;
   const now = Date.now();
   if (hazard.status !== "OPEN") hazard.ackAt ??= now;

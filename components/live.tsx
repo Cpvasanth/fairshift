@@ -1,9 +1,9 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import type { Board } from "@/lib/api";
+import type { Group } from "@/lib/sealed";
 import type { Hazard, Status } from "@/lib/store";
-
-export type Group = { packId: string; theme: string; count: number; summaries: string[] };
 
 type Live = {
   hazards: Hazard[];
@@ -33,11 +33,14 @@ export function LiveProvider({ packId, children }: { packId: string; children: R
       if (document.hidden) return;
       const res = await fetch(`/api/hazards?v=${version.current}`).catch(() => null);
       if (res?.status === 200) {
-        const data = await res.json();
-        version.current = String(data.version);
-        setHazards(data.hazards);
+        const board: Board = await res.json();
+        version.current = String(board.version);
+        setHazards(board.hazards);
         const sealed = await fetch("/api/hazards?sealed=1").catch(() => null);
-        if (sealed?.ok) setGroups(await sealed.json());
+        if (sealed?.ok) {
+          const unlocked: Group[] = await sealed.json();
+          setGroups(unlocked);
+        }
       }
       setNow(Date.now());
     };

@@ -1,34 +1,42 @@
-import { Receipt, Scale, Users } from "lucide-react";
+import { ListChecks, Receipt, Scale, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Card from "@/components/Card";
+import { BarLegend, DayBar } from "@/components/DayBar";
 import HazardReporter from "@/components/HazardReporter";
 import SpeakButton from "@/components/SpeakButton";
+import { UrgencyBadge } from "@/components/StatusBadge";
 import TopBar from "@/components/TopBar";
-import { flags } from "@/lib/fatigue";
-import { computeWeek, hours, inr, rupees, weekday } from "@/lib/pay";
+import { workerAdvice } from "@/lib/assistant";
+import { workerWeek } from "@/lib/crew";
+import { hours, inr, rupees, weekday } from "@/lib/format";
 import { packs } from "@/lib/rules";
-import { recentShifts, seededAt, workers } from "@/lib/seed";
+import { seededAt, workers } from "@/lib/seed";
 
-const stripes = "repeating-linear-gradient(45deg, transparent 0 5px, rgba(0,0,0,.25) 5px 8px)";
+const readAloud = (
+  <>
+    Read aloud · <span lang="ta">படித்துக் காட்டு</span>
+  </>
+);
 
 export default async function WorkerPage({ params }: PageProps<"/w/[id]">) {
   const { id } = await params;
   const w = workers[id];
   if (!w) notFound();
   const pack = packs[w.packId];
-  const r = computeWeek(recentShifts(w), pack, w.wagePaise);
-  const rest = flags(w.shifts, seededAt);
+  const { pay, flags } = workerWeek(w, pack, seededAt);
+  const advice = workerAdvice(pay, flags, pack);
   const dayLimit = pack.dailyHours * 60;
-  const maxMin = Math.max(...r.days.map((d) => d.minutes), dayLimit);
+  const max = Math.max(...pay.days.map((d) => d.minutes), dayLimit);
+  const ot = (minutes: number) => Math.max(0, minutes - dayLimit);
   const sayPay =
-    `கடந்த 7 நாட்களில் நீங்கள் ${hours(r.totalMinutes)} மணி நேரம் வேலை செய்தீர்கள். ` +
-    `அதில் ${hours(r.otMinutes)} மணி நேரம் கூடுதல் நேரம், இரட்டை ஊதியம். ` +
-    `உங்களுக்கு சேர வேண்டியது ${Math.round(r.totalPaise / 100)} ரூபாய்.`;
+    `கடந்த 7 நாட்களில் நீங்கள் ${hours(pay.totalMinutes)} மணி நேரம் வேலை செய்தீர்கள். ` +
+    `அதில் ${hours(pay.otMinutes)} மணி நேரம் கூடுதல் நேரம், இரட்டை ஊதியம். ` +
+    `உங்களுக்கு சேர வேண்டியது ${Math.round(pay.totalPaise / 100)} ரூபாய்.`;
   const stats = [
-    { label: "Hours", note: "last 7 days", value: `${hours(r.totalMinutes)}h` },
-    { label: "Overtime", note: `paid at ${pack.otMultiplier}×`, value: `${hours(r.otMinutes)}h` },
-    { label: "Owed to you", note: "regular + overtime", value: inr(r.totalPaise) },
+    { label: "Hours", note: "last 7 days", value: `${hours(pay.totalMinutes)}h` },
+    { label: "Overtime", note: `paid at ${pack.otMultiplier}×`, value: `${hours(pay.otMinutes)}h` },
+    { label: "Owed to you", note: "regular + overtime", value: inr(pay.totalPaise) },
   ];
 
   return (
@@ -62,25 +70,37 @@ export default async function WorkerPage({ params }: PageProps<"/w/[id]">) {
               </div>
             ))}
           </dl>
-          {/* The worker gets the same rest flags the admin sees: their own copy of the facts. */}
-          {rest.length > 0 && (
-            <ul aria-label="Rest check" className="mt-5 space-y-2">
-              {rest.map((f) => (
-                <li
-                  key={f.action}
-                  className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl p-3 text-sm ring-1 ${f.level === "HIGH" ? "bg-red-50 text-red-950 ring-red-200" : "bg-amber-50 text-amber-950 ring-amber-200"}`}
-                >
-                  <span className={`rounded-lg px-2 py-0.5 text-xs font-bold text-white ${f.level === "HIGH" ? "bg-red-700" : "bg-amber-800"}`}>
-                    <span aria-hidden="true">{f.level === "HIGH" ? "▲ " : "● "}</span>
-                    {f.level}
-                  </span>
-                  <span className="font-semibold">{f.text}</span>
-                  <span>Your site admin is asked to: {f.action.toLowerCase()}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
+
+        <Card
+          id="assistant"
+          Icon={ListChecks}
+          title={
+            <>
+              <span lang="ta">அடுத்து என்ன?</span> · What to do next
+            </>
+          }
+        >
+          <p className="-mt-2 mb-4 text-sm text-slate-600">Worked out from your own hours, pay and rest, under your site&apos;s rules.</p>
+          <ol className="space-y-3">
+            {advice.map((a) => (
+              <li key={a.id} className="rounded-2xl border border-slate-200 p-4">
+                <UrgencyBadge urgency={a.urgency} />
+                <p className="mt-2 font-semibold text-slate-950">{a.en}</p>
+                <p lang="ta" className="mt-1 text-slate-800">
+                  {a.ta}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  <span className="font-semibold text-slate-700">Why: </span>
+                  {a.why}
+                </p>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-4 empty:hidden">
+            <SpeakButton text={advice.map((a) => a.ta).join(" ")}>{readAloud}</SpeakButton>
+          </div>
+        </Card>
 
         <Card
           id="pay"
@@ -93,57 +113,45 @@ export default async function WorkerPage({ params }: PageProps<"/w/[id]">) {
           aside={<span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">Last 7 days</span>}
         >
           <ul className="sr-only">
-            {r.days.map((d) => (
+            {pay.days.map((d) => (
               <li key={d.date}>
                 {weekday(d.date)} {d.date}: {hours(d.minutes)} hours
-                {d.minutes > dayLimit && `, ${hours(d.minutes - dayLimit)} overtime`}
+                {ot(d.minutes) > 0 && `, ${hours(ot(d.minutes))} overtime`}
               </li>
             ))}
           </ul>
           <div aria-hidden="true" className="flex h-44 items-end gap-1.5 sm:gap-3">
-            {r.days.map((d) => (
-              <div key={d.date} className="flex flex-1 flex-col overflow-hidden rounded-lg sm:rounded-xl" style={{ height: `${(d.minutes / maxMin) * 100}%` }}>
-                <div className="bg-amber-400" style={{ height: `${(Math.max(0, d.minutes - dayLimit) / d.minutes) * 100}%`, backgroundImage: stripes }} />
-                <div className="flex-1 bg-indigo-500" />
-              </div>
+            {pay.days.map((d) => (
+              <DayBar key={d.date} minutes={d.minutes} otMinutes={ot(d.minutes)} max={max} />
             ))}
           </div>
           <div aria-hidden="true" className="mt-2 flex gap-1.5 sm:gap-3">
-            {r.days.map((d) => (
+            {pay.days.map((d) => (
               <div key={d.date} className="flex-1 text-center">
                 <div className="text-sm font-medium text-slate-800">{weekday(d.date)}</div>
                 <div className="text-xs text-slate-600">{hours(d.minutes)}h</div>
-                {d.minutes > dayLimit && <div className="text-xs font-semibold text-amber-900">+{hours(d.minutes - dayLimit)} OT</div>}
+                {ot(d.minutes) > 0 && <div className="text-xs font-semibold text-amber-900">+{hours(ot(d.minutes))} OT</div>}
               </div>
             ))}
           </div>
-          <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-slate-700">
-            <li className="flex items-center gap-2">
-              <span aria-hidden="true" className="size-3 rounded-sm bg-indigo-500" />
-              Regular hours
-            </li>
-            <li className="flex items-center gap-2">
-              <span aria-hidden="true" className="size-3 rounded-sm bg-amber-400" style={{ backgroundImage: stripes }} />
-              Overtime, striped
-            </li>
-          </ul>
+          <BarLegend regular="Regular hours" overtime="Overtime, striped" />
 
           <dl className="mt-5 divide-y divide-slate-200 rounded-2xl border border-slate-200 px-4 tabular-nums">
             <div className="flex justify-between gap-3 py-3">
               <dt className="text-slate-700">
-                Regular {hours(r.regularMinutes)}h × {rupees(r.ratePaisePerHour)}
+                Regular {hours(pay.regularMinutes)}h × {rupees(pay.ratePaisePerHour)}
               </dt>
-              <dd className="font-semibold whitespace-nowrap text-slate-950">{rupees(r.regularPaise)}</dd>
+              <dd className="font-semibold whitespace-nowrap text-slate-950">{rupees(pay.regularPaise)}</dd>
             </div>
             <div className="flex justify-between gap-3 py-3">
               <dt className="text-slate-700">
-                Overtime {hours(r.otMinutes)}h × {pack.otMultiplier} × {rupees(r.ratePaisePerHour)}
+                Overtime {hours(pay.otMinutes)}h × {pack.otMultiplier} × {rupees(pay.ratePaisePerHour)}
               </dt>
-              <dd className="font-semibold whitespace-nowrap text-slate-950">{rupees(r.otPaise)}</dd>
+              <dd className="font-semibold whitespace-nowrap text-slate-950">{rupees(pay.otPaise)}</dd>
             </div>
             <div className="flex justify-between gap-3 py-3 text-lg font-semibold text-slate-950">
               <dt>Owed to you</dt>
-              <dd className="whitespace-nowrap">{rupees(r.totalPaise)}</dd>
+              <dd className="whitespace-nowrap">{rupees(pay.totalPaise)}</dd>
             </div>
           </dl>
           <p className="mt-4 flex gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
@@ -152,9 +160,7 @@ export default async function WorkerPage({ params }: PageProps<"/w/[id]">) {
             shift is worth two 8-hour days.
           </p>
           <div className="mt-4 empty:hidden">
-            <SpeakButton text={sayPay}>
-              Read aloud · <span lang="ta">படித்துக் காட்டு</span>
-            </SpeakButton>
+            <SpeakButton text={sayPay}>{readAloud}</SpeakButton>
           </div>
         </Card>
 
