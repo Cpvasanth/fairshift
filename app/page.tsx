@@ -189,7 +189,7 @@ export default function Home() {
         <section aria-label="FairShift in numbers" className="mx-auto -mt-8 max-w-6xl px-4">
           <dl className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg sm:grid-cols-2 lg:grid-cols-4">
             {stats.map((s) => (
-              <div key={s.label} className="flex flex-col-reverse">
+              <div key={s.label} className="flex flex-col-reverse justify-end">
                 <dt className="text-sm text-slate-600">{s.label}</dt>
                 <dd className="text-3xl font-bold tracking-tight text-slate-900">{s.value}</dd>
               </div>
@@ -292,7 +292,7 @@ export default function Home() {
                               </span>
                               <span className="text-slate-600">{w.role}</span>
                               <span className="mt-2 text-sm text-slate-800">
-                                {hours(pay.totalMinutes)}h this week · owed <strong>{rupees(pay.totalPaise)}</strong>
+                                {hours(pay.totalMinutes)}h this week · owed <strong className="whitespace-nowrap">{rupees(pay.totalPaise)}</strong>
                               </span>
                               {flagged && <span className="mt-1 text-sm font-semibold text-red-800">Needs rest</span>}
                             </Link>

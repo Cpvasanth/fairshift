@@ -125,14 +125,74 @@ const statusText: Record<Status, { label: string; cls: string; Icon: typeof Eye 
 const order: Record<Status, number> = { OPEN: 0, ACKNOWLEDGED: 1, FIXED: 2 };
 const sevOrder: Record<Severity, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
+function StatusText({ status }: { status: Status }) {
+  const s = statusText[status];
+  return (
+    <span className={`flex items-center gap-1.5 font-semibold ${s.cls}`}>
+      <s.Icon aria-hidden="true" className="size-4" />
+      {s.label}
+    </span>
+  );
+}
+
+function HazardText({ h, fresh }: { h: Hazard; fresh: boolean }) {
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2 font-semibold capitalize text-slate-900">
+        {h.category}
+        {fresh && <span className="rounded-full bg-red-700 px-2 text-xs font-bold uppercase text-white">New</span>}
+        {h.needsReview && <span className="rounded-full border border-slate-700 px-2 text-xs normal-case">Needs review</span>}
+      </div>
+      <p className="text-sm text-slate-700">{h.summaryEn}</p>
+      {h.transcript && (
+        <p className="mt-1 text-sm text-slate-600">
+          <span className="sr-only">Original words: </span>
+          <span lang={h.language === "ta" ? "ta" : undefined}>“{h.transcript}”</span>
+        </p>
+      )}
+    </>
+  );
+}
+
+// Full-width buttons in the phone cards, compact and right-aligned in the wide table.
+function HazardActions({ h, setStatus }: { h: Hazard; setStatus: (id: string, status: Status) => void }) {
+  return (
+    <div className="flex gap-2 lg:justify-end">
+      {h.status === "OPEN" && (
+        <button
+          onClick={() => setStatus(h.id, "ACKNOWLEDGED")}
+          className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 lg:min-h-10 lg:flex-none"
+        >
+          Acknowledge
+        </button>
+      )}
+      {h.status !== "FIXED" && (
+        <button
+          onClick={() => setStatus(h.id, "FIXED")}
+          className="min-h-11 flex-1 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white hover:bg-slate-800 lg:min-h-10 lg:flex-none"
+        >
+          Mark fixed
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function HazardTable() {
   const { hazards, now, setStatus } = useLive();
   const [status, setFilter] = useState<"ALL" | Status>("ALL");
   const [severity, setSeverity] = useState<"ALL" | Severity>("ALL");
   const rows = hazards
     .filter((h) => (status === "ALL" || h.status === status) && (severity === "ALL" || h.severity === severity))
-    .sort((a, b) => order[a.status] - order[b.status] || sevOrder[a.severity] - sevOrder[b.severity] || b.createdAt - a.createdAt);
-  const select = "min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900";
+    .sort((a, b) => order[a.status] - order[b.status] || sevOrder[a.severity] - sevOrder[b.severity] || b.createdAt - a.createdAt)
+    .map((h) => ({
+      h,
+      fresh: now !== null && h.status === "OPEN" && now - h.createdAt < 10 * 60_000,
+      reported: now === null ? "" : `${ago(now - h.createdAt)} ago`,
+      fixTime: h.fixedAt ? ago(h.fixedAt - h.createdAt) : "–",
+    }));
+  const select = "min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900";
+  const empty = "No hazards match these filters.";
 
   return (
     <>
@@ -159,8 +219,41 @@ export function HazardTable() {
           <LiveStamp />
         </span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] text-left">
+
+      {/* Phones and tablets: one card per hazard, so the actions are never scrolled off-screen. */}
+      <ul aria-live="polite" className="grid gap-3 sm:grid-cols-2 lg:hidden">
+        {rows.length === 0 && <li className="rounded-xl bg-slate-50 p-4 text-center text-slate-600 sm:col-span-2">{empty}</li>}
+        {rows.map(({ h, fresh, reported, fixTime }) => (
+          <li key={h.id} className={`flex flex-col gap-3 rounded-xl border p-4 ${fresh ? "border-red-300 bg-red-50" : "border-slate-200"}`}>
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <HazardText h={h} fresh={fresh} />
+              </div>
+              <SeverityBadge severity={h.severity} />
+            </div>
+            <dl className="grid grid-cols-3 gap-2 text-sm">
+              <div>
+                <dt className="text-slate-600">Status</dt>
+                <dd>
+                  <StatusText status={h.status} />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-600">Reported</dt>
+                <dd className="text-slate-900">{reported}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-600">Time to fix</dt>
+                <dd className="font-semibold text-slate-900">{fixTime}</dd>
+              </div>
+            </dl>
+            {h.status !== "FIXED" && <HazardActions h={h} setStatus={setStatus} />}
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden overflow-x-auto lg:block">
+        <table className="w-full text-left">
           <thead>
             <tr className="bg-slate-50 text-sm text-slate-700">
               <th scope="col" className="rounded-l-lg px-3 py-3 font-semibold">Hazard</th>
@@ -175,63 +268,28 @@ export function HazardTable() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-slate-600">
-                  No hazards match these filters.
+                  {empty}
                 </td>
               </tr>
             )}
-            {rows.map((h) => {
-              const s = statusText[h.status];
-              const fresh = now !== null && h.status === "OPEN" && now - h.createdAt < 10 * 60_000;
-              return (
-                <tr key={h.id} className={`border-b border-slate-100 align-top ${fresh ? "bg-red-50" : ""}`}>
-                  <td className="max-w-md px-3 py-4">
-                    <div className="flex items-center gap-2 font-semibold capitalize text-slate-900">
-                      {h.category}
-                      {fresh && <span className="rounded-full bg-red-700 px-2 text-xs font-bold uppercase text-white">New</span>}
-                      {h.needsReview && <span className="rounded-full border border-slate-700 px-2 text-xs normal-case">Needs review</span>}
-                    </div>
-                    <p className="text-sm text-slate-700">{h.summaryEn}</p>
-                    {h.transcript && (
-                      <p className="mt-1 text-sm text-slate-600">
-                        <span className="sr-only">Original words: </span>
-                        <span lang={h.language === "ta" ? "ta" : undefined}>“{h.transcript}”</span>
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-3 py-4">
-                    <SeverityBadge severity={h.severity} />
-                  </td>
-                  <td className={`px-3 py-4 font-semibold ${s.cls}`}>
-                    <span className="flex items-center gap-1.5">
-                      <s.Icon aria-hidden="true" className="size-4" />
-                      {s.label}
-                    </span>
-                  </td>
-                  <td className="px-3 py-4 text-sm text-slate-700">{now === null ? "" : `${ago(now - h.createdAt)} ago`}</td>
-                  <td className="px-3 py-4 text-sm font-semibold text-slate-900">{h.fixedAt ? ago(h.fixedAt - h.createdAt) : "–"}</td>
-                  <td className="px-3 py-4">
-                    <div className="flex justify-end gap-2">
-                      {h.status === "OPEN" && (
-                        <button
-                          onClick={() => setStatus(h.id, "ACKNOWLEDGED")}
-                          className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                        >
-                          Acknowledge
-                        </button>
-                      )}
-                      {h.status !== "FIXED" && (
-                        <button
-                          onClick={() => setStatus(h.id, "FIXED")}
-                          className="min-h-10 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white hover:bg-slate-800"
-                        >
-                          Mark fixed
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map(({ h, fresh, reported, fixTime }) => (
+              <tr key={h.id} className={`border-b border-slate-100 align-top ${fresh ? "bg-red-50" : ""}`}>
+                <td className="max-w-md px-3 py-4">
+                  <HazardText h={h} fresh={fresh} />
+                </td>
+                <td className="px-3 py-4">
+                  <SeverityBadge severity={h.severity} />
+                </td>
+                <td className="px-3 py-4">
+                  <StatusText status={h.status} />
+                </td>
+                <td className="px-3 py-4 text-sm whitespace-nowrap text-slate-700">{reported}</td>
+                <td className="px-3 py-4 text-sm font-semibold text-slate-900">{fixTime}</td>
+                <td className="px-3 py-4">
+                  <HazardActions h={h} setStatus={setStatus} />
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -245,7 +303,7 @@ export function SealedList() {
   if (groups.length === 0)
     return (
       <p className="flex items-center gap-2 rounded-xl bg-slate-50 p-4 text-slate-700">
-        <Lock aria-hidden="true" className="size-5" />
+        <Lock aria-hidden="true" className="size-5 shrink-0" />
         No theme has reached 5 workers yet. Everything stays sealed.
       </p>
     );

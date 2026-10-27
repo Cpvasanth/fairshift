@@ -179,7 +179,7 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
           maxLength={500}
           onChange={(e) => setText(e.target.value)}
           placeholder="Or type · அல்லது தட்டச்சு"
-          className="min-h-12 flex-1 rounded-lg border-2 border-gray-700 px-3"
+          className="min-h-12 min-w-0 flex-1 rounded-lg border-2 border-gray-700 px-3"
         />
         <button disabled={busy || !text.trim()} className="min-h-12 rounded-lg bg-gray-900 px-4 font-semibold text-white disabled:opacity-60">
           Send

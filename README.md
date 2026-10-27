@@ -8,6 +8,40 @@ Construction sites and college campuses run their workforce on paper registers. 
 so pay is opaque, complaints get traced, and hazards are ignored until someone is hurt. FairShift makes the
 worker's phone a second register: their own copy of hours, pay math and the status of every report, in Tamil.
 
+## Chosen vertical
+
+**UN SDG 8, Decent work and economic growth** (targets 8.5 equal pay, 8.8 labour rights and safe work). Persona: a
+daily-wage or contract worker (mason, helper, security guard, housekeeping) who speaks Tamil, uses a low-end Android
+phone and has no say over the paper register. Second persona: the site admin who needs to see hazards and overwork early.
+
+## Approach and logic
+
+- **Context decides the logic.** Each worker belongs to a site, and each site runs a rule pack (`lib/rules.ts`): wage
+  basis, overtime thresholds, hazard categories, severity floors, feedback themes. The same report or the same 12-hour
+  shift gives a different, correct result on a construction site and on a college campus.
+- **AI listens, rules decide.** Gemini turns Tamil speech or text into schema-constrained JSON. Pay, overtime, fatigue
+  flags, severity floors and the Sealed Voice unlock threshold are plain functions with unit tests.
+- **Decisions are explainable.** Every flag states its rule and an action ("13 days without rest: schedule a day off").
+
+## How it works
+
+| Screen | What it does | Code |
+|---|---|---|
+| Landing page `/` | Live Shift Receipt hero, key figures, problem → features story, worker tiles, rule-pack comparison | `app/page.tsx` |
+| Worker app `/w/[id]` | Weekly pay receipt with overtime bars and Tamil read-aloud; Voice Hazard recorder; "Speak up (sealed)" | `app/w/[id]/page.tsx`, `components/HazardReporter.tsx`, `components/SpeakButton.tsx` |
+| Admin dashboard `/admin?site=` | Key figures, hazard-resolution gauge, crew hours chart, worker × day heatmap, filterable live hazards (cards on phones), attention list, Sealed Voice, crew pay table with CSV export | `app/admin/page.tsx`, `components/LiveWidgets.tsx`, `components/Kpi.tsx` |
+| Live data | One poller for the whole dashboard (4s, 204 when unchanged, paused when hidden) | `components/live.tsx` |
+| API | Hazards POST/GET/PATCH and Sealed Voice in one route (shares one in-memory store) | `app/api/hazards/route.ts`, `lib/store.ts` |
+| Rules (tested) | Pay, fatigue, severity floor, Sealed Voice grouping, rule packs | `lib/pay.ts`, `lib/fatigue.ts`, `lib/severity.ts`, `lib/sealed.ts`, `lib/rules.ts` |
+| AI | Gemini, schema-constrained JSON, temperature 0, falls back across models on quota errors | `lib/ai.ts` |
+
+## Assumptions
+
+- Demo workers, sites and shifts are fictional and seeded relative to server start (`lib/seed.ts`).
+- Overtime is 2× beyond 8h/day or 48h/week; monthly wages assume 26 working days. These are illustrative defaults.
+- Workers have a phone with Chrome; Tamil read-aloud needs a Tamil text-to-speech voice and hides itself otherwise.
+- One warm server instance serves the demo (in-memory store); a real deployment would use a database.
+
 ## Brief → feature → code → SDG 8
 
 | Worker pain | FairShift feature | Code | SDG 8 target |
@@ -49,7 +83,7 @@ Worker phone (/w/[id])            Admin (/admin?site=...)
 npm install
 cp .env.example .env.local   # set GEMINI_API_KEY (server-only, never NEXT_PUBLIC_)
 npm run dev
-npm test                     # Vitest: pay, fatigue, severity
+npm test                     # Vitest: pay, fatigue, severity, sealed
 npm run lint
 ```
 

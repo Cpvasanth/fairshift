@@ -44,7 +44,8 @@ function Card({ id, title, Icon, aside, children, className = "" }: {
   className?: string;
 }) {
   return (
-    <section id={id} aria-labelledby={`${id}-h`} className={`scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 ${className}`}>
+    // min-w-0: a grid item otherwise grows to its content's width and pushes the page sideways on phones.
+    <section id={id} aria-labelledby={`${id}-h`} className={`min-w-0 scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 ${className}`}>
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h2 id={`${id}-h`} className="flex items-center gap-2.5 text-xl font-semibold text-slate-950">
           <Icon aria-hidden="true" className="size-6" strokeWidth={1.75} />
@@ -60,7 +61,7 @@ function Card({ id, title, Icon, aside, children, className = "" }: {
 function FlagChip({ f }: { f: Flag }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-white ${f.level === "HIGH" ? "bg-red-700" : "bg-amber-800"}`}
+      className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs leading-tight font-bold text-white ${f.level === "HIGH" ? "bg-red-700" : "bg-amber-800"}`}
     >
       <span aria-hidden="true">{f.level === "HIGH" ? "▲" : "●"}</span>
       <span className="sr-only">{f.level}: </span>
@@ -91,8 +92,9 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
     }
     return { date, total: hours(total), ot: hours(ot) };
   });
-  const peak = perDay.reduce((a, d) => (d.total > a.total ? d : a), perDay[0] ?? { date: "", total: 0, ot: 0 });
   const maxDay = Math.max(1, ...perDay.map((d) => d.total));
+  // Every day that ties for the most hours is highlighted; the tooltip sits on the first of them.
+  const peakDays = perDay.filter((d) => d.total === maxDay);
 
   const otPaise = crew.reduce((a, c) => a + c.pay.otPaise, 0);
   const otHours = hours(crew.reduce((a, c) => a + c.pay.otMinutes, 0));
@@ -127,15 +129,16 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
               </span>
               FairShift
             </Link>
-            <nav aria-label="Dashboard sections" className="order-3 flex w-full gap-1 overflow-x-auto lg:order-none lg:mx-auto lg:w-auto">
+            {/* Phones: four equal columns, so no section is clipped off-screen. */}
+            <nav aria-label="Dashboard sections" className="order-3 grid w-full grid-cols-4 gap-1 sm:flex lg:order-none lg:mx-auto lg:w-auto">
               {nav.map(({ href, label, Icon, current }) => (
                 <a
                   key={href}
                   href={href}
                   aria-current={current ? "page" : undefined}
-                  className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-semibold ${current ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`}
+                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-1 text-center text-[13px] leading-tight font-semibold sm:px-4 sm:text-sm ${current ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`}
                 >
-                  <Icon aria-hidden="true" className="size-4" />
+                  <Icon aria-hidden="true" className="hidden size-4 sm:block" />
                   {label}
                 </a>
               ))}
@@ -152,10 +155,10 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
 
         <main id="main" className="mx-auto max-w-[1400px] space-y-5 px-4 py-6">
           <div id="overview" className="grid scroll-mt-24 gap-5 xl:grid-cols-[2.3fr_1fr]">
-            <section aria-labelledby="welcome-h" className="rounded-3xl border border-slate-200 bg-white p-6">
+            <section aria-labelledby="welcome-h" className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 sm:p-6">
               <div className="flex flex-wrap items-start gap-4">
                 <div className="mr-auto max-w-2xl">
-                  <h1 id="welcome-h" className="text-3xl font-semibold tracking-tight text-slate-950">
+                  <h1 id="welcome-h" className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
                     Welcome back, site admin
                   </h1>
                   <p className="mt-2 text-slate-600">
@@ -223,19 +226,24 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
                   </li>
                 ))}
               </ul>
-              <div aria-hidden="true" className="flex h-72 items-end gap-3 pt-14">
-                {perDay.map((d) => {
-                  const isPeak = d.date === peak.date;
+              {/* pt-16 leaves room for the tooltip above the tallest bar. */}
+              <div aria-hidden="true" className="flex h-72 items-end gap-1.5 pt-16 sm:gap-3">
+                {perDay.map((d, i) => {
+                  const isPeak = d.total === maxDay;
+                  // Centred over its bar, but pinned to the card edge on the first and last bar so it never spills out.
+                  const align = i === 0 ? "left-0" : i === perDay.length - 1 ? "right-0" : "left-1/2 -translate-x-1/2";
                   return (
-                    <div key={d.date} className="relative flex h-full flex-1 flex-col justify-end">
-                      {isPeak && (
-                        <div className="absolute inset-x-0 -top-14 mx-auto w-fit rounded-xl bg-slate-950 px-3 py-1.5 text-center text-white">
-                          <div className="text-[11px] text-slate-300">Peak day</div>
-                          <div className="text-lg font-semibold leading-tight">{d.total}h</div>
-                          <span className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-slate-950" />
-                        </div>
+                    <div key={d.date} className="relative flex-1" style={{ height: `${(d.total / maxDay) * 100}%` }}>
+                      {d.date === peakDays[0]?.date && (
+                        <>
+                          <div className={`absolute bottom-full mb-2 whitespace-nowrap rounded-lg bg-slate-950 px-2.5 py-1 text-center text-white sm:px-3 ${align}`}>
+                            <div className="text-[11px] text-slate-300">{peakDays.length > 1 ? `Peak, ${peakDays.length} days` : "Peak day"}</div>
+                            <div className="text-base font-semibold leading-tight sm:text-lg">{d.total}h</div>
+                          </div>
+                          <span className="absolute bottom-full left-1/2 mb-1 size-2 -translate-x-1/2 rotate-45 bg-slate-950" />
+                        </>
                       )}
-                      <div className="flex flex-col overflow-hidden rounded-xl" style={{ height: `${(d.total / maxDay) * 85}%` }}>
+                      <div className="flex h-full flex-col overflow-hidden rounded-lg sm:rounded-xl">
                         <div
                           className="bg-amber-400"
                           style={{
@@ -249,15 +257,15 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
                   );
                 })}
               </div>
-              <div aria-hidden="true" className="mt-3 flex gap-3">
+              <div aria-hidden="true" className="mt-3 flex gap-1.5 sm:gap-3">
                 {perDay.map((d) => (
                   <div key={d.date} className="flex-1 text-center">
-                    <div className="font-medium text-slate-800">{weekday(d.date)}</div>
+                    <div className="text-sm font-medium text-slate-800 sm:text-base">{weekday(d.date)}</div>
                     <div className="text-xs text-slate-600">{d.total}h</div>
                   </div>
                 ))}
               </div>
-              <ul className="mt-4 flex flex-wrap gap-5 text-sm font-medium text-slate-700">
+              <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-slate-700">
                 <li className="flex items-center gap-2">
                   <span aria-hidden="true" className="size-3 rounded-sm bg-indigo-200" />
                   Regular hours
@@ -283,12 +291,13 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
                   <span className="text-sm text-slate-600">longest week: {longest.w.name}</span>
                 </p>
               )}
+              {/* Fixed layout: seven equal day columns that fit a 390px phone without scrolling. */}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px] border-separate border-spacing-1 text-center">
+                <table className="w-full min-w-[280px] table-fixed border-separate border-spacing-0.5 text-center sm:border-spacing-1">
                   <caption className="sr-only">Hours worked per worker per day, last 7 days</caption>
                   <thead>
                     <tr>
-                      <th scope="col" className="w-24 text-left text-xs font-medium text-slate-600">
+                      <th scope="col" className="w-[4.5rem] text-left text-xs font-medium text-slate-600 sm:w-24">
                         <span className="sr-only">Worker</span>
                       </th>
                       {days.map((d) => (
@@ -301,13 +310,13 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
                   <tbody>
                     {crew.map((c) => (
                       <tr key={c.w.id}>
-                        <th scope="row" className="pr-2 text-left text-sm font-semibold text-slate-900">
+                        <th scope="row" className="truncate pr-1 text-left text-sm font-semibold text-slate-900 sm:pr-2">
                           {c.w.name}
                         </th>
                         {days.map((d) => {
                           const h = hours(c.pay.days.find((x) => x.date === d)?.minutes ?? 0);
                           return (
-                            <td key={d} className={`h-14 rounded-lg text-sm font-semibold ${heat(h)}`}>
+                            <td key={d} className={`h-11 rounded-md text-xs font-semibold sm:h-14 sm:rounded-lg sm:text-sm ${heat(h)}`}>
                               {h ? `${h}h` : <span aria-label="no shift">–</span>}
                             </td>
                           );
@@ -325,7 +334,7 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
                   ["> 12h", "bg-orange-700"],
                 ].map(([label, cls]) => (
                   <li key={label} className="flex items-center gap-1.5">
-                    <span aria-hidden="true" className={`size-3 rounded-sm ${cls}`} />
+                    <span aria-hidden="true" className={`size-3 rounded-sm ring-1 ring-inset ring-black/20 ${cls}`} />
                     {label}
                   </li>
                 ))}
@@ -390,48 +399,56 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
               </a>
             }
           >
+            {/* Priority columns: phones keep Worker (name links to the receipt) and Owed; hours and flags fold under the name. */}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left">
+              <table className="w-full text-left">
                 <thead>
                   <tr className="bg-slate-50 text-sm text-slate-700">
                     <th scope="col" className="rounded-l-lg px-3 py-3 font-semibold">Worker</th>
-                    <th scope="col" className="px-3 font-semibold">Hours</th>
-                    <th scope="col" className="px-3 font-semibold">Overtime</th>
-                    <th scope="col" className="px-3 font-semibold">Rate</th>
-                    <th scope="col" className="px-3 text-right font-semibold">Owed</th>
-                    <th scope="col" className="px-3 font-semibold">Flags</th>
-                    <th scope="col" className="rounded-r-lg px-3 font-semibold">
+                    <th scope="col" className="hidden px-3 font-semibold md:table-cell">Hours</th>
+                    <th scope="col" className="hidden px-3 font-semibold md:table-cell">Overtime</th>
+                    <th scope="col" className="hidden px-3 font-semibold lg:table-cell">Rate</th>
+                    <th scope="col" className="px-3 text-right font-semibold max-sm:rounded-r-lg">Owed</th>
+                    <th scope="col" className="hidden px-3 font-semibold md:table-cell">Flags</th>
+                    <th scope="col" className="hidden rounded-r-lg px-3 font-semibold sm:table-cell">
                       <span className="sr-only">Worker app</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {crew.map(({ w, pay, flags }) => (
-                    <tr key={w.id} className="border-b border-slate-100">
-                      <td className="px-3 py-4">
-                        <div className="font-semibold text-slate-950">{w.name}</div>
-                        <div className="text-sm text-slate-600">{w.role}</div>
-                      </td>
-                      <td className="px-3 text-slate-900">{hours(pay.totalMinutes)}h</td>
-                      <td className="px-3 font-semibold text-slate-900">{hours(pay.otMinutes)}h</td>
-                      <td className="px-3 text-sm text-slate-700">{rupees(pay.ratePaisePerHour)}/h</td>
-                      <td className="px-3 text-right font-semibold text-slate-950">{rupees(pay.totalPaise)}</td>
-                      <td className="px-3">
-                        <div className="flex flex-wrap gap-1">
-                          {flags.length ? flags.map((f) => <FlagChip key={f.action} f={f} />) : <span className="text-sm text-emerald-800">OK</span>}
-                        </div>
-                      </td>
-                      <td className="px-3 text-right">
-                        <Link
-                          href={`/w/${w.id}`}
-                          className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                        >
-                          <Smartphone aria-hidden="true" className="size-4" />
-                          Receipt<span className="sr-only"> for {w.name}</span>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                  {crew.map(({ w, pay, flags }) => {
+                    const chips = flags.length ? flags.map((f) => <FlagChip key={f.action} f={f} />) : <span className="text-sm text-emerald-800">OK</span>;
+                    return (
+                      <tr key={w.id} className="border-b border-slate-100">
+                        <td className="px-3 py-4">
+                          <Link href={`/w/${w.id}`} className="font-semibold text-slate-950 underline-offset-2 hover:underline">
+                            {w.name}
+                          </Link>
+                          <div className="text-sm text-slate-600">{w.role}</div>
+                          <div className="mt-1 text-sm text-slate-800 md:hidden">
+                            {hours(pay.totalMinutes)}h · {hours(pay.otMinutes)}h overtime
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1 md:hidden">{chips}</div>
+                        </td>
+                        <td className="hidden px-3 text-slate-900 md:table-cell">{hours(pay.totalMinutes)}h</td>
+                        <td className="hidden px-3 font-semibold text-slate-900 md:table-cell">{hours(pay.otMinutes)}h</td>
+                        <td className="hidden px-3 text-sm whitespace-nowrap text-slate-700 lg:table-cell">{rupees(pay.ratePaisePerHour)}/h</td>
+                        <td className="px-3 text-right font-semibold whitespace-nowrap text-slate-950">{rupees(pay.totalPaise)}</td>
+                        <td className="hidden px-3 md:table-cell">
+                          <div className="flex flex-wrap gap-1">{chips}</div>
+                        </td>
+                        <td className="hidden px-3 text-right sm:table-cell">
+                          <Link
+                            href={`/w/${w.id}`}
+                            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                          >
+                            <Smartphone aria-hidden="true" className="size-4" />
+                            Receipt<span className="sr-only"> for {w.name}</span>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
