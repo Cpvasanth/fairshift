@@ -28,9 +28,10 @@ phone and has no say over the paper register. Second persona: the site admin who
 | Screen | What it does | Code |
 |---|---|---|
 | Landing page `/` | Live Shift Receipt hero, key figures, problem → features story, worker tiles, rule-pack comparison | `app/page.tsx` |
-| Worker app `/w/[id]` | Weekly pay receipt with overtime bars and Tamil read-aloud; Voice Hazard recorder; "Speak up (sealed)" | `app/w/[id]/page.tsx`, `components/HazardReporter.tsx`, `components/SpeakButton.tsx` |
+| Worker app `/w/[id]` | Key figures and the worker's own rest flags; weekly pay receipt with overtime bars and Tamil read-aloud; Voice Hazard recorder; "Speak up (sealed)" | `app/w/[id]/page.tsx`, `components/HazardReporter.tsx`, `components/SpeakButton.tsx` |
 | Admin dashboard `/admin?site=` | Key figures, hazard-resolution gauge, crew hours chart, worker × day heatmap, filterable live hazards (cards on phones), attention list, Sealed Voice, crew pay table with CSV export | `app/admin/page.tsx`, `components/LiveWidgets.tsx`, `components/Kpi.tsx` |
 | Live data | One poller for the whole dashboard (4s, 204 when unchanged, paused when hidden) | `components/live.tsx` |
+| Shared UI | One look on all three screens: top bar, cards, key figures, status pills | `components/TopBar.tsx`, `components/Card.tsx`, `components/Kpi.tsx`, `components/StatusBadge.tsx` |
 | API | Hazards POST/GET/PATCH and Sealed Voice in one route (shares one in-memory store) | `app/api/hazards/route.ts`, `lib/store.ts` |
 | Rules (tested) | Pay, fatigue, severity floor, Sealed Voice grouping, rule packs, rate limit | `lib/pay.ts`, `lib/fatigue.ts`, `lib/severity.ts`, `lib/sealed.ts`, `lib/rules.ts`, `lib/ratelimit.ts` |
 | AI | Gemini, schema-constrained JSON, temperature 0, falls back across models on quota errors | `lib/ai.ts` |

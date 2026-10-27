@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Volume2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
 const tamilVoice = () => speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith("ta"));
 
@@ -16,7 +17,7 @@ export function speak(text: string) {
   speechSynthesis.speak(u);
 }
 
-export default function SpeakButton({ text, label }: { text: string; label: string }) {
+export default function SpeakButton({ text, children }: { text: string; children: ReactNode }) {
   const [ok, setOk] = useState(false);
   useEffect(() => {
     const check = () => setOk(!!tamilVoice());
@@ -32,10 +33,10 @@ export default function SpeakButton({ text, label }: { text: string; label: stri
     <button
       type="button"
       onClick={() => speak(text)}
-      className="min-h-12 rounded-lg bg-green-800 px-4 py-3 font-semibold text-white"
+      className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-emerald-700 px-4 font-semibold text-white hover:bg-emerald-800"
     >
-      <span aria-hidden="true">🔊 </span>
-      {label}
+      <Volume2 aria-hidden="true" className="size-5" />
+      <span>{children}</span>
     </button>
   );
 }

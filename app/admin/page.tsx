@@ -7,21 +7,20 @@ import {
   HeartPulse,
   IndianRupee,
   LayoutGrid,
-  Receipt,
+  LockKeyhole,
   Smartphone,
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import Card from "@/components/Card";
 import Kpi from "@/components/Kpi";
 import { LiveProvider } from "@/components/live";
 import { BellLink, FixTimeKpi, HazardTable, OpenHazardsKpi, ResolutionGauge, SealedList } from "@/components/LiveWidgets";
+import TopBar, { type NavItem } from "@/components/TopBar";
 import { flags, type Flag } from "@/lib/fatigue";
-import { computeWeek, dayKey, hours, rupees } from "@/lib/pay";
+import { computeWeek, dayKey, hours, inr, rupees, weekday } from "@/lib/pay";
 import { packs } from "@/lib/rules";
 import { recentShifts, seededAt, workers } from "@/lib/seed";
-
-const inr = (paise: number) => `₹${Math.round(paise / 100).toLocaleString("en-IN")}`;
-const weekday = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" });
 
 // Heatmap scale: a cell's colour comes from that worker's hours that day. Text keeps 4.5:1 on every step.
 const heat = (h: number) =>
@@ -34,29 +33,6 @@ const heat = (h: number) =>
         : h <= 12
           ? "bg-orange-500 text-slate-950"
           : "bg-orange-700 text-white";
-
-function Card({ id, title, Icon, aside, children, className = "" }: {
-  id: string;
-  title: string;
-  Icon: typeof Gauge;
-  aside?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    // min-w-0: a grid item otherwise grows to its content's width and pushes the page sideways on phones.
-    <section id={id} aria-labelledby={`${id}-h`} className={`min-w-0 scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 ${className}`}>
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <h2 id={`${id}-h`} className="flex items-center gap-2.5 text-xl font-semibold text-slate-950">
-          <Icon aria-hidden="true" className="size-6" strokeWidth={1.75} />
-          {title}
-        </h2>
-        {aside && <div className="ml-auto">{aside}</div>}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 function FlagChip({ f }: { f: Flag }) {
   return (
@@ -111,47 +87,23 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
   const csvHref = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
   const csvName = `fairshift-${pack.id}-week.csv`;
 
-  const nav = [
+  const nav: NavItem[] = [
     { href: "#overview", label: "Dashboard", Icon: LayoutGrid, current: true },
     { href: "#hazards", label: "Hazards", Icon: Gauge },
     { href: "#crew", label: "Crew & pay", Icon: Users },
-    { href: "#sealed", label: "Sealed Voice", Icon: HeartPulse },
+    { href: "#sealed", label: "Sealed Voice", Icon: LockKeyhole },
   ];
 
   return (
     <LiveProvider packId={pack.id}>
       <div className="min-h-full bg-slate-100">
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-4 px-4 py-3">
-            <Link href="/" className="flex items-center gap-2 text-xl font-bold text-slate-950">
-              <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-700 text-white">
-                <Receipt aria-hidden="true" className="size-5" />
-              </span>
-              FairShift
-            </Link>
-            {/* Phones: four equal columns, so no section is clipped off-screen. */}
-            <nav aria-label="Dashboard sections" className="order-3 grid w-full grid-cols-4 gap-1 sm:flex lg:order-none lg:mx-auto lg:w-auto">
-              {nav.map(({ href, label, Icon, current }) => (
-                <a
-                  key={href}
-                  href={href}
-                  aria-current={current ? "page" : undefined}
-                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-1 text-center text-[13px] leading-tight font-semibold sm:px-4 sm:text-sm ${current ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100"}`}
-                >
-                  <Icon aria-hidden="true" className="hidden size-4 sm:block" />
-                  {label}
-                </a>
-              ))}
-            </nav>
-            <div className="ml-auto flex items-center gap-3 lg:ml-0">
-              <BellLink />
-              <span className="flex size-11 items-center justify-center rounded-full bg-indigo-100 font-bold text-indigo-900">
-                <span aria-hidden="true">SA</span>
-                <span className="sr-only">Signed in as site admin</span>
-              </span>
-            </div>
-          </div>
-        </header>
+        <TopBar nav={nav} navLabel="Dashboard sections">
+          <BellLink />
+          <span className="flex size-11 items-center justify-center rounded-full bg-indigo-100 font-bold text-indigo-900">
+            <span aria-hidden="true">SA</span>
+            <span className="sr-only">Signed in as site admin</span>
+          </span>
+        </TopBar>
 
         <main id="main" className="mx-auto max-w-[1400px] space-y-5 px-4 py-6">
           <div id="overview" className="grid scroll-mt-24 gap-5 xl:grid-cols-[2.3fr_1fr]">
@@ -375,7 +327,7 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
               </ul>
             </Card>
 
-            <Card id="sealed" title="Sealed Voice" Icon={HeartPulse}>
+            <Card id="sealed" title="Sealed Voice" Icon={LockKeyhole}>
               <p className="mb-4 text-sm text-slate-600">
                 Feedback stays sealed until 5 workers here raise the same theme within 4 weeks. Only English summaries are shown,
                 never who said it or how.

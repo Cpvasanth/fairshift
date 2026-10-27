@@ -1,3 +1,4 @@
+import { Check, CircleDot, Eye } from "lucide-react";
 import type { Severity } from "@/lib/rules";
 import type { Status } from "@/lib/store";
 
@@ -18,13 +19,19 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
   );
 }
 
-export const statusLabel: Record<Status, string> = {
-  OPEN: "Open · திறந்துள்ளது",
-  ACKNOWLEDGED: "Seen · பார்க்கப்பட்டது",
-  FIXED: "Fixed · சரி செய்யப்பட்டது",
+// Pill with icon, English word and Tamil word (marked lang="ta"), matching the admin board's chips.
+const status: Record<Status, { en: string; ta: string; cls: string; Icon: typeof Check }> = {
+  OPEN: { en: "Open", ta: "திறந்துள்ளது", cls: "bg-red-50 text-red-800 ring-red-200", Icon: CircleDot },
+  ACKNOWLEDGED: { en: "Seen", ta: "பார்க்கப்பட்டது", cls: "bg-indigo-50 text-indigo-800 ring-indigo-200", Icon: Eye },
+  FIXED: { en: "Fixed", ta: "சரி செய்யப்பட்டது", cls: "bg-emerald-50 text-emerald-800 ring-emerald-200", Icon: Check },
 };
 
-export function StatusBadge({ status }: { status: Status }) {
-  const cls = status === "FIXED" ? "bg-green-800" : status === "ACKNOWLEDGED" ? "bg-blue-800" : "bg-gray-700";
-  return <span className={`rounded px-2 py-0.5 text-sm font-semibold text-white ${cls}`}>{statusLabel[status]}</span>;
+export function StatusBadge({ status: s }: { status: Status }) {
+  const { en, ta, cls, Icon } = status[s];
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm font-semibold ring-1 ${cls}`}>
+      <Icon aria-hidden="true" className="size-4" />
+      {en} · <span lang="ta">{ta}</span>
+    </span>
+  );
 }

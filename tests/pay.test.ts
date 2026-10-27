@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeWeek, type Shift } from "../lib/pay";
+import { computeWeek, inr, weekday, type Shift } from "../lib/pay";
 import { packs } from "../lib/rules";
 
 const DAY = 86_400_000;
@@ -45,5 +45,14 @@ describe("computeWeek", () => {
   it("a night shift counts to the date it started", () => {
     const night = { start: Date.UTC(2026, 9, 19, 14, 30), minutes: 12 * 60 }; // 20:00 IST
     expect(computeWeek([night], campus, 1_500_000).days).toEqual([{ date: "2026-10-19", minutes: 720 }]);
+  });
+});
+
+describe("display helpers", () => {
+  it("rounds headline rupees and groups them the Indian way", () => {
+    expect(inr(80_505_049)).toBe("₹8,05,050");
+  });
+  it("names the weekday of a day key", () => {
+    expect(weekday("2026-10-27")).toBe("Tue");
   });
 });

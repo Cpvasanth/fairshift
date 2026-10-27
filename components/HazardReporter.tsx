@@ -1,12 +1,16 @@
 "use client";
 
+import { Lock, LockKeyhole, Mic, Square, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Severity } from "@/lib/rules";
 import type { Status } from "@/lib/store";
+import Card from "./Card";
 import { speak } from "./SpeakButton";
 import { SeverityBadge, StatusBadge } from "./StatusBadge";
 
 type Report = { id: string; status: Status; category: string; severity: Severity };
+// Every message is English plus Tamil; the Tamil half is rendered with lang="ta" so it is pronounced correctly.
+type Msg = { en: string; ta?: string };
 
 // The worker's phone keeps the random receipt ids; the server never learns who reported.
 const KEY = "fairshift.reports";
@@ -19,12 +23,8 @@ const said: Record<Status, string> = {
 const SEALED_TA = "உங்கள் கருத்து மூடி வைக்கப்பட்டது. ஐந்து பேர் ஒரே விஷயத்தைச் சொன்னால் மட்டுமே திறக்கப்படும்.";
 
 const copy = {
-  hazard: { ta: "ஆபத்தை தெரிவிக்க", en: "Report danger", hint: "" },
-  voice: {
-    ta: "மனம் திறந்து பேசுங்கள்",
-    en: "Speak up (sealed)",
-    hint: "Water, toilets, wages, how you are treated. Sealed until 5 workers here raise the same issue; your words are never shown.",
-  },
+  hazard: { ta: "ஆபத்தை தெரிவிக்க", en: "Report danger", Icon: TriangleAlert },
+  voice: { ta: "மனம் திறந்து பேசுங்கள்", en: "Speak up (sealed)", Icon: LockKeyhole },
 };
 
 const loadIds = (): string[] => {
@@ -43,7 +43,7 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
   const [seconds, setSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState("");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<Msg | null>(null);
   const rec = useRef<MediaRecorder | null>(null);
   const seen = useRef<Record<string, Status>>({});
 
@@ -65,7 +65,7 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
       for (const r of list) {
         if (seen.current[r.id] && seen.current[r.id] !== r.status) {
           speak(said[r.status]);
-          setMsg(`Update: ${said[r.status]}`);
+          setMsg({ en: "Update", ta: said[r.status] });
         }
         seen.current[r.id] = r.status;
       }
@@ -83,18 +83,18 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
     body.append("packId", packId);
     body.append("kind", kind);
     setBusy(true);
-    setMsg("Sending… · அனுப்புகிறது…");
+    setMsg({ en: "Sending…", ta: "அனுப்புகிறது…" });
     try {
       const res = await fetch("/api/hazards", { method: "POST", body });
       if (res.status === 429) {
-        setMsg("Too many reports from this phone. Please wait a few minutes. · சில நிமிடங்கள் கழித்து முயற்சிக்கவும்.");
+        setMsg({ en: "Too many reports from this phone. Please wait a few minutes.", ta: "சில நிமிடங்கள் கழித்து முயற்சிக்கவும்." });
         return;
       }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       if (kind === "voice") {
         setText("");
-        setMsg(`Sealed under "${data.theme}". It opens only when 5 workers here raise the same issue. · ${SEALED_TA}`);
+        setMsg({ en: `Sealed under "${data.theme}". It opens only when 5 workers here raise the same issue.`, ta: SEALED_TA });
         speak(SEALED_TA);
         return;
       }
@@ -105,10 +105,10 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
       seen.current[data.id] = "OPEN";
       setIds(next);
       setText("");
-      setMsg(`Reported: ${data.category}, ${data.severity}. · ${said.OPEN}`);
+      setMsg({ en: `Reported: ${data.category}, ${data.severity}.`, ta: said.OPEN });
       speak(said.OPEN);
     } catch {
-      setMsg("Could not send. Please try again. · அனுப்ப முடியவில்லை.");
+      setMsg({ en: "Could not send. Please try again.", ta: "அனுப்ப முடியவில்லை." });
     } finally {
       setBusy(false);
     }
@@ -120,7 +120,7 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setMsg("Microphone blocked. Please type instead. · தட்டச்சு செய்யவும்.");
+      setMsg({ en: "Microphone blocked. Please type instead.", ta: "தட்டச்சு செய்யவும்." });
       return;
     }
     const type = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
@@ -148,66 +148,93 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
     setRecording(true);
   }
 
+  const { ta, en, Icon } = copy[kind];
   return (
-    <section aria-labelledby={`${kind}-h`} className="space-y-3 rounded-xl border-2 border-gray-300 p-4">
-      <h2 id={`${kind}-h`} className="text-xl font-bold">
-        <span lang="ta">{copy[kind].ta}</span> · {copy[kind].en}
-      </h2>
-      {copy[kind].hint && <p className="text-gray-700">{copy[kind].hint}</p>}
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={busy}
-        aria-pressed={recording}
-        className={`min-h-28 w-full rounded-xl px-4 py-4 text-xl font-bold text-white disabled:opacity-60 ${recording ? "bg-red-800" : "bg-blue-800"}`}
-      >
-        <span aria-hidden="true">{recording ? "■ " : "🎤 "}</span>
-        {recording ? `Stop and send · ${seconds}s / 60s` : "Tap to speak · பேச தட்டவும்"}
-      </button>
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const fd = new FormData();
-          fd.append("text", text);
-          submit(fd);
-        }}
-      >
-        <label htmlFor={`${kind}-text`} className="sr-only">
-          Or type what is wrong
-        </label>
-        <input
-          id={`${kind}-text`}
-          lang="ta"
-          value={text}
-          maxLength={500}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Or type · அல்லது தட்டச்சு"
-          className="min-h-12 min-w-0 flex-1 rounded-lg border-2 border-gray-700 px-3"
-        />
-        <button disabled={busy || !text.trim()} className="min-h-12 rounded-lg bg-gray-900 px-4 font-semibold text-white disabled:opacity-60">
-          Send
+    <Card id={kind} Icon={Icon} title={<><span lang="ta">{ta}</span> · {en}</>}>
+      <div className="space-y-4">
+        {kind === "voice" && (
+          <p className="flex gap-2 rounded-xl bg-violet-50 p-3 text-sm text-violet-950">
+            <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            Water, toilets, wages, how you are treated. Sealed until 5 workers here raise the same issue; your words are
+            never shown.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={busy}
+          aria-pressed={recording}
+          className={`flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-2xl px-4 py-4 text-lg font-semibold text-white disabled:opacity-60 ${recording ? "bg-red-700" : "bg-slate-950 hover:bg-slate-800"}`}
+        >
+          {recording ? <Square aria-hidden="true" className="size-7 fill-current" /> : <Mic aria-hidden="true" className="size-7" />}
+          {recording ? (
+            <span>Stop and send · {seconds}s / 60s</span>
+          ) : (
+            <span>
+              Tap to speak · <span lang="ta">பேச தட்டவும்</span>
+            </span>
+          )}
         </button>
-      </form>
-      <p role="status" className="min-h-6 font-medium">
-        {msg}
-      </p>
-      {reports.length > 0 && (
-        <div>
-          <h3 className="font-bold">
-            <span lang="ta">என் புகார்கள்</span> · My reports
-          </h3>
-          <ul className="mt-2 space-y-2">
-            {reports.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-100 p-3">
-                <SeverityBadge severity={r.severity} />
-                <span className="font-semibold">{r.category}</span>
-                <StatusBadge status={r.status} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </section>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData();
+            fd.append("text", text);
+            submit(fd);
+          }}
+        >
+          <label htmlFor={`${kind}-text`} className="sr-only">
+            Or type what is wrong
+          </label>
+          <input
+            id={`${kind}-text`}
+            lang="ta"
+            value={text}
+            maxLength={500}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Or type · அல்லது தட்டச்சு"
+            className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-500 bg-white px-3 text-slate-900 placeholder:text-slate-600"
+          />
+          <button
+            disabled={busy || !text.trim()}
+            className="min-h-12 rounded-xl bg-slate-950 px-5 font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            Send
+          </button>
+        </form>
+        <p role="status" className={`font-medium text-slate-900 ${msg ? "rounded-xl bg-slate-50 p-3" : ""}`}>
+          {msg && (
+            <>
+              {msg.en}
+              {msg.ta && (
+                <>
+                  {" · "}
+                  <span lang="ta">{msg.ta}</span>
+                </>
+              )}
+            </>
+          )}
+        </p>
+        {reports.length > 0 && (
+          <div>
+            <h3 className="font-semibold text-slate-950">
+              <span lang="ta">என் புகார்கள்</span> · My reports
+            </h3>
+            <ul className="mt-2 space-y-2">
+              {reports.map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-3">
+                  <SeverityBadge severity={r.severity} />
+                  <span className="font-semibold capitalize text-slate-900">{r.category}</span>
+                  <span className="ml-auto">
+                    <StatusBadge status={r.status} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
