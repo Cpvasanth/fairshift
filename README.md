@@ -32,7 +32,7 @@ phone and has no say over the paper register. Second persona: the site admin who
 | Admin dashboard `/admin?site=` | Key figures, hazard-resolution gauge, crew hours chart, worker × day heatmap, filterable live hazards (cards on phones), attention list, Sealed Voice, crew pay table with CSV export | `app/admin/page.tsx`, `components/LiveWidgets.tsx`, `components/Kpi.tsx` |
 | Live data | One poller for the whole dashboard (4s, 204 when unchanged, paused when hidden) | `components/live.tsx` |
 | API | Hazards POST/GET/PATCH and Sealed Voice in one route (shares one in-memory store) | `app/api/hazards/route.ts`, `lib/store.ts` |
-| Rules (tested) | Pay, fatigue, severity floor, Sealed Voice grouping, rule packs | `lib/pay.ts`, `lib/fatigue.ts`, `lib/severity.ts`, `lib/sealed.ts`, `lib/rules.ts` |
+| Rules (tested) | Pay, fatigue, severity floor, Sealed Voice grouping, rule packs, rate limit | `lib/pay.ts`, `lib/fatigue.ts`, `lib/severity.ts`, `lib/sealed.ts`, `lib/rules.ts`, `lib/ratelimit.ts` |
 | AI | Gemini, schema-constrained JSON, temperature 0, falls back across models on quota errors | `lib/ai.ts` |
 
 ## Assumptions
@@ -83,7 +83,7 @@ Worker phone (/w/[id])            Admin (/admin?site=...)
 npm install
 cp .env.example .env.local   # set GEMINI_API_KEY (server-only, never NEXT_PUBLIC_)
 npm run dev
-npm test                     # Vitest: pay, fatigue, severity, sealed
+npm test                     # Vitest: pay, fatigue, severity, sealed, rate limit
 npm run lint
 ```
 
@@ -94,12 +94,16 @@ Demo workers (fictional): Murugan and Selvi (construction), Ravi and Lakshmi (co
 
 - No keys in the repo or the browser bundle: the Gemini key is a server-only Vercel secret; `.env*` is gitignored.
 - Every request body is validated (zod, size caps: audio ≤ 1 MB, text ≤ 500 chars). Audio is processed and discarded.
+- Rate limit: each client may file 8 reports per 10 minutes (`429` + `Retry-After`), which also protects the Gemini
+  quota. The limiter key lives in memory for the window only and is never logged or stored with a report.
 - Prompt injection: the system instruction treats the report as data; output is schema-constrained; React escapes display.
 - Headers: `frame-ancestors 'none'`, `nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy: microphone=(self)`.
 - Real buttons and labels, skip link, 3px focus ring, 48px+ targets, mic is a toggle with `aria-pressed` and a visible
   timer (keyboard-usable), severity is icon + word + color, overtime bars use a stripe pattern, `lang="ta"` on Tamil
   text, `role="status"` / `aria-live` for updates. Read-aloud only uses a Tamil voice; it hides rather than reading
   Tamil with an English voice.
+- Checked with Lighthouse: accessibility 100 on `/`, `/admin` and `/w/murugan`, mobile and desktop. Layouts verified
+  at 1440px and 390px with no horizontal scrolling; on phones the hazard table becomes cards so actions stay on screen.
 
 ## Limitations (honest)
 

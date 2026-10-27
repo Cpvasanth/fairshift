@@ -86,6 +86,10 @@ export default function HazardReporter({ packId, kind = "hazard" }: { packId: st
     setMsg("Sending… · அனுப்புகிறது…");
     try {
       const res = await fetch("/api/hazards", { method: "POST", body });
+      if (res.status === 429) {
+        setMsg("Too many reports from this phone. Please wait a few minutes. · சில நிமிடங்கள் கழித்து முயற்சிக்கவும்.");
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       if (kind === "voice") {

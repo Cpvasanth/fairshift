@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { analyze, analyzeVoice } from "@/lib/ai";
+import { clientKey, hit, type Window } from "@/lib/ratelimit";
 import { packs } from "@/lib/rules";
 import { isoWeek, unlockedGroups } from "@/lib/sealed";
 import { finalSeverity } from "@/lib/severity";
@@ -10,8 +11,15 @@ import { store, type Hazard } from "@/lib/store";
 
 const MAX_AUDIO = 1_000_000;
 const MAX_TEXT = 500;
+// Every report costs a Gemini call on a free-tier quota, so one client may file at most 8 per 10 minutes.
+const REPORTS_PER_WINDOW = 8;
+const WINDOW_MS = 10 * 60_000;
+const windows = new Map<string, Window>();
 
 export async function POST(req: Request) {
+  const limit = hit(windows, clientKey(req.headers), REPORTS_PER_WINDOW, WINDOW_MS, Date.now());
+  if (!limit.ok)
+    return Response.json({ error: "too many reports" }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   const form = await req.formData();
   const pack = packs[String(form.get("packId"))];
   if (!pack) return Response.json({ error: "unknown site" }, { status: 400 });
