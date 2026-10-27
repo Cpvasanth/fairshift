@@ -5,3 +5,15 @@ body {
   color: #111827;
   font-family: system-ui, sans-serif;
 }
+
+:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
