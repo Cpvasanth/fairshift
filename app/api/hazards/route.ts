@@ -1,10 +1,12 @@
 import { z } from "zod";
-import { analyze } from "@/lib/ai";
+import { analyze, analyzeVoice } from "@/lib/ai";
 import { packs } from "@/lib/rules";
+import { isoWeek, unlockedGroups } from "@/lib/sealed";
 import { finalSeverity } from "@/lib/severity";
 import { store, type Hazard } from "@/lib/store";
 
-// Every hazard read and write lives in this one route so they share one in-memory store (see lib/store.ts).
+// Every hazard and Sealed Voice read and write lives in this one route so they share one in-memory store
+// (see lib/store.ts). POST kind=voice files sealed feedback; everything else is a hazard.
 
 const MAX_AUDIO = 1_000_000;
 const MAX_TEXT = 500;
@@ -24,6 +26,13 @@ export async function POST(req: Request) {
     input = { text: text.trim() };
   } else {
     return Response.json({ error: `send audio or text (<= ${MAX_TEXT} chars)` }, { status: 400 });
+  }
+  if (form.get("kind") === "voice") {
+    // Site, theme, English summary and ISO week only: no worker id, no timestamp.
+    const { theme, summaryEn } = await analyzeVoice(input, pack);
+    store.voices.push({ packId: pack.id, theme, summaryEn, week: isoWeek(Date.now()) });
+    store.version++;
+    return Response.json({ theme });
   }
   const a = await analyze(input, pack);
   const hazard: Hazard = {
@@ -46,6 +55,8 @@ export async function POST(req: Request) {
 // Worker: ?ids=a,b -> status of their own receipts only. Admin board: ?v=<version> -> 204 when unchanged.
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
+  // Sealed Voice: only groups that reached 5 ever leave the server.
+  if (params.has("sealed")) return Response.json(unlockedGroups(store.voices, Date.now()));
   const ids = params.get("ids");
   if (ids !== null) {
     const wanted = new Set(ids.split(",").slice(0, 50));

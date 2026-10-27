@@ -12,6 +12,7 @@ export type Pack = {
   otMultiplier: number;
   categories: [string, ...string[]];
   severityFloor: Record<string, Severity>;
+  themes: [string, ...string[]];
 };
 
 export const packs: Record<string, Pack> = {
@@ -25,6 +26,7 @@ export const packs: Record<string, Pack> = {
     otMultiplier: 2,
     categories: ["fall from height", "scaffolding", "electrical", "no PPE", "heat stress", "other"],
     severityFloor: { "fall from height": "HIGH", electrical: "HIGH" },
+    themes: ["drinking water", "toilets", "wage delay", "supervisor abuse", "safety gear", "other"],
   },
   college: {
     id: "college",
@@ -36,5 +38,6 @@ export const packs: Record<string, Pack> = {
     otMultiplier: 2,
     categories: ["electrical", "lab chemical", "fire exit blocked", "structural damage", "slippery floor", "other"],
     severityFloor: { electrical: "HIGH", "fire exit blocked": "HIGH" },
+    themes: ["wage delay", "shift length", "harassment", "rest room", "safety gear", "other"],
   },
 };

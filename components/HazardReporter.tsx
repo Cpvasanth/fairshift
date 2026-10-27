@@ -16,6 +16,17 @@ const said: Record<Status, string> = {
   FIXED: "உங்கள் புகார் சரி செய்யப்பட்டது. நன்றி.",
 };
 
+const SEALED_TA = "உங்கள் கருத்து மூடி வைக்கப்பட்டது. ஐந்து பேர் ஒரே விஷயத்தைச் சொன்னால் மட்டுமே திறக்கப்படும்.";
+
+const copy = {
+  hazard: { ta: "ஆபத்தை தெரிவிக்க", en: "Report danger", hint: "" },
+  voice: {
+    ta: "மனம் திறந்து பேசுங்கள்",
+    en: "Speak up (sealed)",
+    hint: "Water, toilets, wages, how you are treated. Sealed until 5 workers here raise the same issue; your words are never shown.",
+  },
+};
+
 const loadIds = (): string[] => {
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? "[]");
@@ -24,7 +35,8 @@ const loadIds = (): string[] => {
   }
 };
 
-export default function HazardReporter({ packId }: { packId: string }) {
+// kind="voice" reuses the recorder for Sealed Voice: no receipt ids, no status polling.
+export default function HazardReporter({ packId, kind = "hazard" }: { packId: string; kind?: "hazard" | "voice" }) {
   const [ids, setIds] = useState<string[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [recording, setRecording] = useState(false);
@@ -36,9 +48,10 @@ export default function HazardReporter({ packId }: { packId: string }) {
   const seen = useRef<Record<string, Status>>({});
 
   useEffect(() => {
+    if (kind !== "hazard") return;
     const t = setTimeout(() => setIds(loadIds()), 0);
     return () => clearTimeout(t);
-  }, []);
+  }, [kind]);
 
   // Poll my receipts every 4s while the page is visible; read status changes aloud.
   useEffect(() => {
@@ -68,12 +81,19 @@ export default function HazardReporter({ packId }: { packId: string }) {
 
   async function submit(body: FormData) {
     body.append("packId", packId);
+    body.append("kind", kind);
     setBusy(true);
     setMsg("Sending… · அனுப்புகிறது…");
     try {
       const res = await fetch("/api/hazards", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      if (kind === "voice") {
+        setText("");
+        setMsg(`Sealed under "${data.theme}". It opens only when 5 workers here raise the same issue. · ${SEALED_TA}`);
+        speak(SEALED_TA);
+        return;
+      }
       const next = [data.id, ...ids].slice(0, 20);
       try {
         localStorage.setItem(KEY, JSON.stringify(next));
@@ -125,10 +145,11 @@ export default function HazardReporter({ packId }: { packId: string }) {
   }
 
   return (
-    <section aria-labelledby="report-h" className="space-y-3 rounded-xl border-2 border-gray-300 p-4">
-      <h2 id="report-h" className="text-xl font-bold">
-        <span lang="ta">ஆபத்தை தெரிவிக்க</span> · Report danger
+    <section aria-labelledby={`${kind}-h`} className="space-y-3 rounded-xl border-2 border-gray-300 p-4">
+      <h2 id={`${kind}-h`} className="text-xl font-bold">
+        <span lang="ta">{copy[kind].ta}</span> · {copy[kind].en}
       </h2>
+      {copy[kind].hint && <p className="text-gray-700">{copy[kind].hint}</p>}
       <button
         type="button"
         onClick={toggle}
@@ -148,11 +169,11 @@ export default function HazardReporter({ packId }: { packId: string }) {
           submit(fd);
         }}
       >
-        <label htmlFor="report-text" className="sr-only">
+        <label htmlFor={`${kind}-text`} className="sr-only">
           Or type what is wrong
         </label>
         <input
-          id="report-text"
+          id={`${kind}-text`}
           lang="ta"
           value={text}
           maxLength={500}

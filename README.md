@@ -40,7 +40,7 @@ Worker phone (/w/[id])            Admin (/admin?site=...)
             \                         /
           Next.js 16 on Vercel: /api/hazards (POST, GET, PATCH)
             lib/* pure functions (pay, fatigue, severity, rules)
-            lib/ai.ts -> Gemini API (gemini-3.5-flash), server-only key
+            lib/ai.ts -> Gemini API (Flash-Lite, falls back across models on quota errors), server-only key
 ```
 
 ## Run, test, deploy
@@ -72,7 +72,7 @@ Demo workers (fictional): Murugan and Selvi (construction), Ravi and Lakshmi (co
 - Demo store is in memory behind one API route: it resets on a cold start and assumes one warm instance. Next step:
   Supabase or Upstash Redis.
 - No login yet: worker and admin pages are open for the demo. Next step: PIN login and an admin role check.
-- Gemini free tier: Google may use submitted content to improve its products; a production deployment should use a
+- Gemini free tier allows about 20 requests per model per day; `lib/ai.ts` falls through several models on 429s. Google may use submitted content to improve its products; a production deployment should use a
   paid tier or Vertex AI.
 - Hosting logs keep IP and time, so someone with project access could correlate anonymous reports.
 - Rule packs are defaults, not legal advice.

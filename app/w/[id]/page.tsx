@@ -80,6 +80,7 @@ export default async function WorkerPage({ params }: PageProps<"/w/[id]">) {
       </section>
 
       <HazardReporter packId={pack.id} />
+      <HazardReporter packId={pack.id} kind="voice" />
     </main>
   );
 }

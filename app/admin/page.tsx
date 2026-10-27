@@ -1,5 +1,6 @@
 import Link from "next/link";
 import HazardBoard from "@/components/HazardBoard";
+import SealedPanel from "@/components/SealedPanel";
 import { flags } from "@/lib/fatigue";
 import { computeWeek, hours, rupees } from "@/lib/pay";
 import { packs } from "@/lib/rules";
@@ -42,6 +43,17 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
         </section>
 
         <div className="space-y-6">
+          <section aria-labelledby="sv-h" className="space-y-3">
+            <h2 id="sv-h" className="text-xl font-bold">
+              Sealed Voice
+            </h2>
+            <p className="text-gray-700">
+              Feedback stays sealed until 5 workers at this site raise the same theme within 4 weeks. Only English summaries are
+              shown, never who said it or how.
+            </p>
+            <SealedPanel packId={pack.id} />
+          </section>
+
           <section aria-labelledby="att-h" className="space-y-3">
             <h2 id="att-h" className="text-xl font-bold">
               Attention list
